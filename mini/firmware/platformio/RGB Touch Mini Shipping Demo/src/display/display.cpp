@@ -148,7 +148,7 @@ void MatrixDisplay::show()
 {
 	if (display_orientation != rgbtouch.current_orientation)
 	{
-		rgbtouch.requires_re_orientation = (!rgbtouch.check_mode(Modes::FUN) || rgbtouch.check_play_mode(PlayModes::PIANO) || rgbtouch.check_play_mode(PlayModes::PATTERNS));
+		rgbtouch.requires_re_orientation = (!rgbtouch.check_mode(Modes::FUN) || rgbtouch.check_play_mode(PlayModes::PIANO) || rgbtouch.check_play_mode(PlayModes::PATTERNS) || display_orientation == DeviceOrientation::UNSET);
 		if (rgbtouch.requires_re_orientation || !rgbtouch.started)
 		{
 			display_orientation = rgbtouch.current_orientation;

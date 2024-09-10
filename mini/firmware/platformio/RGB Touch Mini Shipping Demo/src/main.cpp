@@ -130,6 +130,16 @@ void loop()
 		return;
 	}
 
+	// Calc device orientation and if device moved
+	if (rgbtouch.calc_orientation())
+	{
+		// If the device has been moved, we reset last touch like it has been touched.
+		// This way we dont need to track individual timers
+		touch.last_touch = millis();
+
+		// info_println("Was Moved");
+	}
+
 	/*
 	 * This is all for the fancy logo and mode display at the start
 	 */
@@ -148,6 +158,7 @@ void loop()
 		rgbtouch.change_mode(Modes::FUN);
 		rgbtouch.change_play_mode((PlayModes)settings.config.last_mode);
 		display.show_icon(display.icons_menu[(int)rgbtouch.play_mode], 2, 2);
+		display.display_orientation = DeviceOrientation::UNSET;
 		display.show();
 		audio_player.play_wav_queue(audio_player.play_mode_voices[(int)rgbtouch.play_mode]);
 
@@ -158,23 +169,14 @@ void loop()
 	{
 		rgbtouch.started = true;
 		recorder.rec = Recording(display.fade_step);
-		display.clear();
+		display.display_orientation = DeviceOrientation::UNSET;
+		display.clear(true);
 		return;
 	}
 
 	/*
 	 * End of fancy logo and mode display at the start
 	 */
-
-	// calc device orientation and if device moved
-	if (rgbtouch.calc_orientation())
-	{
-		// If the device has been moved, we reset last touch like it has been touched.
-		// This way we dont need to track individual timers
-		touch.last_touch = millis();
-
-		// info_println("Was Moved");
-	}
 
 	if (touch.process_touches(display.current_touch_color))
 	{
