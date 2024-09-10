@@ -1,6 +1,11 @@
-/**
-   RGB Touch Mini Shipping Demo
+/***
+   RGB Touch Mini - ESP-NOW based Tic Tac Toe
    2024 Unexpected Maker
+
+   This game uses ESP-NOW for device to device communication, so no internet connection
+   is required.
+
+   Devices auto poll for ESP-NOW peers, and self determine who is the host.
 
    For more information about RGB Touch Mini, please visit https://rgbtouch.com
 
@@ -27,19 +32,19 @@
 #define VBUS_SENSE 48
 #define IMU_INT 7
 #define MPR_INT 15
-#define DEVICE_PWR 21
 
 // IMU
 Adafruit_LIS3DH lis = Adafruit_LIS3DH();
 
-constexpr char *orient_names[5] = {"TOP", "RIGHT", "BOTTOM", "LEFT", "UNSET"};
-
 void setup()
 {
+
+	// delay(5000);
+
 	// Was I sleeping or is this a cold boot
 	bool was_asleep = rgbtouch.was_sleeping();
 
-	gpio_hold_dis(GPIO_NUM_38); // LED MATRIX PWR
+	gpio_hold_dis(GPIO_NUM_38);
 	gpio_hold_dis(GPIO_NUM_34);
 	gpio_hold_dis(GPIO_NUM_15); // MPR_INT
 	gpio_hold_dis(GPIO_NUM_7);	// IMU_INT
@@ -63,6 +68,7 @@ void setup()
 	}
 
 	audio_player.setup(35, 36, 37, 34);
+
 	display.begin();
 
 	if (!touch.initialise_mpr())
@@ -72,7 +78,7 @@ void setup()
 	}
 
 	if (!lis.begin(0x18))
-	{
+	{ // change this to 0x19 for alternative i2c address
 		info_println("LIS3DH Couldn't start");
 	}
 	else
@@ -80,6 +86,7 @@ void setup()
 		info_println("LIS3DH found!");
 		lis.setRange(LIS3DH_RANGE_8_G);
 		lis.setINTpolarity(1);
+		// lis.setPerformanceMode(LIS3DH_MODE_LOW_POWER);
 	}
 
 	delay(100);
@@ -106,7 +113,6 @@ void setup()
 		info_printf("Woke from deep sleep by %d\n", rgbtouch.woke_by());
 	}
 
-	// Needed to ESP-NOW comms between devices
 	Share_ESPNOW::getInstance().init_esp_now();
 }
 
@@ -117,14 +123,13 @@ void loop()
 
 	if (rgbtouch.shutting_down)
 	{
-		// set pixel brightness to 0
 		display.set_brightness(0, false);
 		display.show();
 
 		if (millis() - rgbtouch.shutdown_timer > 3000)
 		{
-			pinMode(DEVICE_PWR, OUTPUT);
-			digitalWrite(DEVICE_PWR, HIGH);
+			pinMode(21, OUTPUT);
+			digitalWrite(21, HIGH);
 		}
 
 		return;
@@ -146,7 +151,7 @@ void loop()
 		display.clear();
 
 		rgbtouch.change_mode(Modes::FUN);
-		rgbtouch.change_play_mode((PlayModes)settings.config.last_mode);
+		rgbtouch.change_play_mode(PlayModes::PLAY);
 		display.show_icon(display.icons_menu[(int)rgbtouch.play_mode], 2, 2);
 		display.show();
 		audio_player.play_wav_queue(audio_player.play_mode_voices[(int)rgbtouch.play_mode]);
@@ -157,7 +162,7 @@ void loop()
 	else if (!rgbtouch.started)
 	{
 		rgbtouch.started = true;
-		recorder.rec = Recording(display.fade_step);
+		// recorder.rec = Recording(display.fade_step);
 		display.clear();
 		return;
 	}
@@ -178,7 +183,7 @@ void loop()
 
 	if (touch.process_touches(display.current_touch_color))
 	{
-		if (rgbtouch.check_play_mode(PlayModes::PLAY) || rgbtouch.check_play_mode(PlayModes::BEEPS))
+		if (rgbtouch.check_play_mode(PlayModes::PLAY))
 			display.cycle_touch_color();
 	}
 
@@ -192,6 +197,8 @@ void loop()
 			display.set_display_power(false);
 			if (!rgbtouch.vbus_preset())
 				rgbtouch.go_to_sleep();
+			else
+				touch.last_touch = millis();
 		}
 		else if (millis() - touch.last_touch > rgbtouch.get_sleep_timer(0))
 		{
@@ -205,20 +212,17 @@ void loop()
 		}
 	}
 
-	// Update the display
 	display.update();
 
-	// Not using the wifi controller for much - yet
 	wifi_controller.loop();
 
-	// This only gets run internally every 10 seconds
+	// this only gets called internally every 10 seconds
 	Share_ESPNOW::getInstance().find_peers();
 
-	// Process any incoming data that is a shared recording.
+	// if (touch.wifi_started && millis() - touch.wifi_start_delay > 1000)
 	recorder.recieve_recording();
 }
 
-// Device is shutting down, so say goodbye!
 void RGBTouch::shutdown()
 {
 	display.set_brightness(0);
@@ -235,10 +239,7 @@ uint32_t RGBTouch::get_sleep_timer(uint8_t stage)
 		return (settings.config.deep_sleep_dimmer_BAT[stage]);
 }
 
-bool RGBTouch::was_sleeping()
-{
-	return (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1);
-}
+bool RGBTouch::was_sleeping() { return (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1); }
 
 int RGBTouch::woke_by()
 {
@@ -306,17 +307,18 @@ bool RGBTouch::calc_orientation()
 	double y_Buff = 0;
 	double z_Buff = 0;
 
-	size_t num_samples = 5;
-	for (size_t samples = 0; samples < num_samples; samples++)
+	uint8_t samples = 0;
+
+	while (++samples < 5)
 	{
 		x_Buff += float(event.acceleration.x);
 		y_Buff += float(event.acceleration.y);
 		z_Buff += float(event.acceleration.z);
 	}
 
-	x_Buff = (x_Buff / num_samples);
-	y_Buff = (y_Buff / num_samples);
-	z_Buff = (z_Buff / num_samples);
+	x_Buff = (x_Buff / samples - 1);
+	y_Buff = (y_Buff / samples - 1);
+	z_Buff = (z_Buff / samples - 1);
 
 	orientation_roll = atan2(y_Buff, z_Buff) * 57.3;
 	orientation_pitch = atan2((-x_Buff), sqrt(y_Buff * y_Buff + z_Buff * z_Buff)) * 57.3;
@@ -347,8 +349,6 @@ bool RGBTouch::calc_orientation()
 		else if (orientation_pitch > DEADZONE)
 			current_orientation = DeviceOrientation::FACE_BOTTOM;
 	}
-
-	//
 	// else
 	// {
 	// 	if (orientation_roll < -DEADZONE)
@@ -356,6 +356,8 @@ bool RGBTouch::calc_orientation()
 	// 	else if (orientation_roll > DEADZONE)
 	// 		current_orientation = DeviceOrientation::FACE_LEFT;
 	// }
+
+	// info_printf("Orientation: %s\n", orientation_names[(int)current_orientation]);
 
 	return moved;
 }
@@ -381,26 +383,12 @@ void RGBTouch::change_play_mode(PlayModes new_mode)
 
 	// Anything to process after we change mode
 	if (rgbtouch.check_play_mode(PlayModes::PLAY))
-	{
 		display.fade_step = 10;
-	}
-	else if (rgbtouch.check_play_mode(PlayModes::PATTERNS))
-	{
-		display.fade_step = 50;
-	}
-	else if (rgbtouch.check_play_mode(PlayModes::BEEPS) || rgbtouch.check_play_mode(PlayModes::PIANO))
-	{
-		display.fade_step = 75;
-	}
-	else if (rgbtouch.check_play_mode(PlayModes::MAGIC_SAND))
-	{
-		display.fade_step = 100;
-	}
 
 	set_swipes();
 
-	settings.config.last_mode = (int)rgbtouch.play_mode;
-	settings.save(true);
+	// Only one mode, so no need to save the selection
+	// settings.save(true);
 }
 
 bool RGBTouch::check_mode(Modes new_mode)
@@ -411,10 +399,18 @@ bool RGBTouch::check_mode(Modes new_mode)
 void RGBTouch::change_mode(Modes new_mode)
 {
 	// // Anything to process before we change mode
+	// if (touch.mode == Modes::FUN)
 	display.clear(false);
 
 	rgbtouch.mode = new_mode;
 	info_printf("New mode: %d\n", rgbtouch.mode);
+
+	// Dont save the current mode when it's just the menu
+	// if (mode != Modes::MENU)
+	// {
+	// 	settings.config.last_mode = (int)mode;
+	// 	settings.save(true);
+	// }
 }
 
 bool RGBTouch::start_recording()
@@ -442,21 +438,8 @@ bool RGBTouch::start_recording()
 	return false;
 }
 
-void RGBTouch::set_swipes()
-{
-	if (rgbtouch.check_play_mode(PlayModes::PATTERNS))
-	{
-		touch.allow_swipes(true, false);
-	}
-	else
-	{
-		touch.allow_swipes(false, false);
-	}
-}
-
 bool RGBTouch::switch_to_menu()
 {
-	settings.config.last_mode = (int)rgbtouch.play_mode;
 	display.menu_icons_pos_x_target = 2 - (12 * rgbtouch.play_mode);
 	display.menu_icons_pos_x = display.menu_icons_pos_x_target;
 	rgbtouch.menu_mode = (MenuModes)rgbtouch.play_mode;
@@ -520,6 +503,11 @@ bool RGBTouch::menu_cancel()
 	return false;
 }
 
+void RGBTouch::set_swipes()
+{
+	touch.allow_swipes(false, false);
+}
+
 bool RGBTouch::menu_accept()
 {
 	// audio_player.play_wav("ok");
@@ -550,6 +538,7 @@ bool RGBTouch::menu_accept()
 			audio_player.play_wav_queue(audio_player.play_mode_voices[(int)rgbtouch.menu_mode]);
 			display.display_orientation = DeviceOrientation::UNSET;
 			display.clear(true);
+
 			return true;
 		}
 	}
@@ -589,7 +578,7 @@ bool RGBTouch::menu_accept()
 		}
 		else if (rgbtouch.settings_mode == SettingsModes::SET_BRIGHTNESS)
 		{
-			// Update the brightness value in settings with the current target value
+			// Update the brightness value in settings with teh current target value
 			settings.config.brightness = rgbtouch.temp_brightness;
 			display.set_brightness(settings.config.brightness, true);
 			settings.save(true);
