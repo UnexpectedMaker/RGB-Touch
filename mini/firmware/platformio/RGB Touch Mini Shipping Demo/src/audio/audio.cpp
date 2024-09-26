@@ -1,5 +1,5 @@
 #include "audio/audio.h"
-#include "wifi.h"
+#include "WiFi.h"
 
 float hhz = 440;
 float tm = 1.0;
