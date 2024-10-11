@@ -32,7 +32,7 @@ typedef union
 				game_data_t data;
 		} __attribute__((packed));
 
-		uint8_t raw[3];
+		uint8_t raw[sizeof(game_data_t)];
 } game_data_chunk_t;
 
 class TicTacToe : public MultiplayerGame
