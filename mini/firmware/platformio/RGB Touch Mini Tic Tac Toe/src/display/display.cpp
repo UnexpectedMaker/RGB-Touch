@@ -184,15 +184,18 @@ void MatrixDisplay::update()
 	if (rgbtouch.check_mode(Modes::FUN))
 	{
 		if ( game == nullptr ) {
+
+			// TODO : Force game to end , drop peer etc 
+			// DROP out of FUN mode
 			return;
 		}
-		
+
 		if (rgbtouch.check_play_mode(PlayModes::PLAY))
 		{
 			if (millis() - next_redraw > 25)
 			{
 				next_redraw = millis();
-
+		
 				game->display_game();
 
 				_matrix->show();

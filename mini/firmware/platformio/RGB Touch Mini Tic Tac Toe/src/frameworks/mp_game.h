@@ -10,6 +10,7 @@
 #include "Arduino.h"
 #include "utilities/logging.h"
 #include <vector>
+#include "../audio/audio.h"
 
 struct Player
 {
@@ -61,6 +62,7 @@ class MultiplayerGame
     	virtual void display_game() = 0;
 		virtual void end_game() = 0;
 		virtual void reset_game() = 0;
+		virtual SFX get_game_wave_file(const char *wav_name) = 0;
 
 	private:
 		bool is_host = false;

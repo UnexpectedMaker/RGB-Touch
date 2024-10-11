@@ -4,15 +4,18 @@
  * Uses ESP-NOW for device to device communication
  */
 
-#include "game_tictactoe.h"
 #include "../display/display.h"
 #include "../touch/touch.h"
-#include "share/share.h"
-#include "audio/audio.h"
+#include "../share/share.h"
+#include "game_tictactoe.h"
 
 TicTacToe::TicTacToe()
 {
 	game = &ticTacToe;	// Base class to take init
+
+	game_wav_files = {
+		{"tictactoe", SFX(voice_tic_tac_toe, sizeof(voice_tic_tac_toe))},
+	};
 
 	// for (size_t i = 0; i < 9; i++)
 	// 	board[i] = 0;
@@ -346,5 +349,18 @@ bool TicTacToe::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int dat
 
 	return true;
 }
+
+SFX TicTacToe::get_game_wave_file(const char *wav_name)
+{
+	SFX file;
+
+	if (game_wav_files.count(wav_name)>0)
+	{
+		file = game_wav_files[wav_name];
+	}
+
+	return file;
+}
+
 
 TicTacToe ticTacToe;

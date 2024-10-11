@@ -1,5 +1,6 @@
 #include "audio/audio.h"
 #include "WiFi.h"
+#include "frameworks/mp_game.h"
 
 float hhz = 440;
 float tm = 1.0;
@@ -186,7 +187,18 @@ void AudioClass::play_wav(const char *wav_name, bool force)
 	if (settings.config.volume == 0)
 		return;
 
-	file = new AudioFileSourcePROGMEM(wav_files[wav_name].array, wav_files[wav_name].size);
+	// If we have a game , lets ask it first for wav data
+	if ( game != nullptr ) {
+		SFX gameWav = game->get_game_wave_file(wav_name);
+		if ( gameWav.array && gameWav.size > 0 ) {
+			file = new AudioFileSourcePROGMEM(gameWav.array, gameWav.size);
+		}
+	}
+
+	if ( !file ) {
+		file = new AudioFileSourcePROGMEM(wav_files[wav_name].array, wav_files[wav_name].size);
+	}
+
 	wav->begin(file, out);
 }
 

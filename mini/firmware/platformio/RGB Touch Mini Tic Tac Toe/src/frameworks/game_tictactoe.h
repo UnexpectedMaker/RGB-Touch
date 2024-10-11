@@ -1,5 +1,7 @@
 #pragma once
 
+#include <map>
+#include "../audio/audio.h"
 #include "mp_game.h"
 
 enum DataType : uint8_t
@@ -58,11 +60,14 @@ class TicTacToe : public MultiplayerGame
 		void update_position(uint8_t position, uint8_t piece) override;
 		void set_piece(uint8_t piece) override;
 		bool onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len) override;
+		SFX get_game_wave_file(const char *wav_name) override;
 
 		int16_t waiting_radius[2] = {0, 0};
 		uint16_t wait_period = 150;
 
 	private:
+		std::map<const char *, SFX> game_wav_files;
+
 		uint8_t board[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
 		uint8_t pos_fader[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
 		uint8_t piece_pos_x[9] = {0, 4, 8, 0, 4, 8, 0, 4, 8};
