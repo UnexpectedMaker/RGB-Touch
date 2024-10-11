@@ -4,10 +4,13 @@
  * Uses ESP-NOW for device to device communication
  */
 
-#include "../display/display.h"
-#include "../touch/touch.h"
-#include "../share/share.h"
+#include "../../display/display.h"
+#include "../../touch/touch.h"
+#include "../../share/share.h"
+
+// Game specfic files
 #include "game_tictactoe.h"
+#include "audio/voice/voice_tic_tac_toe.h"
 
 TicTacToe::TicTacToe()
 {

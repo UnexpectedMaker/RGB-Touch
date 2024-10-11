@@ -79,9 +79,6 @@
 #include "audio/voice/voice_yes.h"
 #include "audio/voice/voice_zero.h"
 
-#include "audio/voice/voice_tic_tac_toe.h"
-
-
 #include "audio/sfx/sfx_button.h"
 
 #include "settings.h"

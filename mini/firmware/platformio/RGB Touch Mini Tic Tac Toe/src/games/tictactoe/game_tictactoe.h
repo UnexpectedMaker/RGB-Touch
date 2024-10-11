@@ -1,8 +1,8 @@
 #pragma once
 
 #include <map>
-#include "../audio/audio.h"
-#include "mp_game.h"
+#include "../../audio/audio.h"
+#include "../../frameworks/mp_game.h"
 
 enum DataType : uint8_t
 {
