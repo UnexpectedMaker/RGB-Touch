@@ -10,13 +10,21 @@
 #include "share/share.h"
 #include "audio/audio.h"
 
+TicTacToe::TicTacToe()
+{
+	game = &ticTacToe;	// Base class to take init
+
+	// for (size_t i = 0; i < 9; i++)
+	// 	board[i] = 0;
+}
+
 void TicTacToe::send_data(DataType type, uint8_t data0, uint8_t data1)
 {
 	game_data_chunk_t data;
 	data.data.dtype = (uint8_t)type;
 	data.data.data0 = data0;
 	data.data.data1 = data1;
-	share_espnow.getInstance().send(data);
+	share_espnow.getInstance().send_gamedata(data.raw, Elements(data.raw));
 }
 
 bool TicTacToe::touched_board(uint8_t x, uint8_t y)
@@ -62,7 +70,7 @@ bool TicTacToe::touched_board(uint8_t x, uint8_t y)
 	return false;
 }
 
-bool TicTacToe::set_position(uint8_t position, BoardPiece piece)
+bool TicTacToe::set_position(uint8_t position, uint8_t piece)
 {
 	if (!my_turn)
 	{
@@ -74,7 +82,7 @@ bool TicTacToe::set_position(uint8_t position, BoardPiece piece)
 	{
 		if (board[position] == (uint8_t)BoardPiece::EMPTY)
 		{
-			board[position] = (uint8_t)piece;
+			board[position] = piece;
 			pos_fader[position] = 255;
 
 			moves_left--;
@@ -100,13 +108,13 @@ bool TicTacToe::set_position(uint8_t position, BoardPiece piece)
 	return false;
 }
 
-void TicTacToe::update_position(uint8_t position, BoardPiece piece)
+void TicTacToe::update_position(uint8_t position, uint8_t piece)
 {
 	if (position < 9)
 	{
 		if (board[position] == (uint8_t)BoardPiece::EMPTY)
 		{
-			board[position] = (uint8_t)piece;
+			board[position] = piece;
 			pos_fader[position] = 0;
 
 			moves_left--;
@@ -264,16 +272,16 @@ uint8_t TicTacToe::check_winner()
 	return 0;
 }
 
-void TicTacToe::start_game(BoardPiece piece)
+void TicTacToe::start_game(uint8_t piece)
 {
-	player_piece = piece;
+	player_piece = (BoardPiece)piece;
 }
 
-void TicTacToe::set_piece(BoardPiece piece)
+void TicTacToe::set_piece(uint8_t piece)
 {
 	if ((host_starts && !is_hosting()) || (!host_starts && is_hosting()))
 	{
-		player_piece = piece;
+		player_piece = (BoardPiece)piece;
 
 		info_printf("Setting player piece to %d\n", piece);
 
@@ -314,4 +322,29 @@ void TicTacToe::set_state(GameState s)
 	MultiplayerGame::set_state(s);
 }
 
-TicTacToe game;
+bool TicTacToe::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len)
+{
+	game_data_chunk_t *new_packet = reinterpret_cast<game_data_chunk_t *>((uint8_t *)data);
+
+	info_print("Data: ");
+	for (int i = 0; i < data_len; i++)
+	{
+		info_printf("%d ", (uint8_t)data[i]);
+	}
+
+	info_println();
+
+	if ((DataType)data[0] == DataType::SEND_MOVE || (DataType)data[0] == DataType::END_GAME)
+	{
+		update_position((uint8_t)data[1], (BoardPiece)(uint8_t)data[2]);
+	}
+	else 
+	{
+		set_piece((BoardPiece)(uint8_t)data[1]);
+	}
+	
+
+	return true;
+}
+
+TicTacToe ticTacToe;

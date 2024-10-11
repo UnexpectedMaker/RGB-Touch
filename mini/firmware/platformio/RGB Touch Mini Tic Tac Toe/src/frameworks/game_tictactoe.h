@@ -36,25 +36,28 @@ typedef union
 class TicTacToe : public MultiplayerGame
 {
 	public:
-		TicTacToe(){
-			// for (size_t i = 0; i < 9; i++)
-			// 	board[i] = 0;
-		};
+		TicTacToe();
+    	~TicTacToe() {
+			game = nullptr;		
+		}
 
-		void display_game();
-
-		bool touched_board(uint8_t x, uint8_t y);
-		bool set_position(uint8_t position, BoardPiece piece);
-		void update_position(uint8_t position, BoardPiece piece);
-
-		void set_state(GameState s) override;
+		bool set_position(uint8_t position, uint8_t piece);
 
 		uint8_t check_winner();
-		void start_game(BoardPiece piece);
-		void set_piece(BoardPiece piece);
-		void end_game();
-		void reset_game();
 		void send_data(DataType type, uint8_t data0, uint8_t data1);
+
+		// Virtual functions override 
+		void start_game(uint8_t piece) override;
+		void reset_game() override;
+		void end_game() override;
+
+		void set_state(GameState s) override;
+	   	void display_game() override;
+		bool touched_board(uint8_t x, uint8_t y) override;
+
+		void update_position(uint8_t position, uint8_t piece) override;
+		void set_piece(uint8_t piece) override;
+		bool onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len) override;
 
 		int16_t waiting_radius[2] = {0, 0};
 		uint16_t wait_period = 150;
@@ -101,4 +104,4 @@ class TicTacToe : public MultiplayerGame
 		};
 };
 
-extern TicTacToe game;
+extern TicTacToe ticTacToe;

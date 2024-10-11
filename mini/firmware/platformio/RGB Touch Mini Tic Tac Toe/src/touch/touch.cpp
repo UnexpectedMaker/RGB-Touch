@@ -2,7 +2,7 @@
 #include "audio/audio.h"
 
 #include "display/display.h"
-#include "frameworks/game_tictactoe.h"
+#include "frameworks/mp_game.h"
 
 // You can have up to 4 on one i2c bus but one is enough for testing!
 Adafruit_MPR121 cap_col = Adafruit_MPR121();
@@ -328,20 +328,25 @@ bool TouchMatrix::process_touches(uint8_t col)
 
 	if (touches.size() > 0 && rgbtouch.check_play_mode(PlayModes::PLAY))
 	{
-		if (game.get_state() == GameState::GAME_WAITING)
+		if ( game == nullptr ) {
+			clear_all_touches();
+			return (touch_count > 0);
+		}
+
+		if (game->get_state() == GameState::GAME_WAITING)
 		{
 		}
-		else if (game.get_state() == GameState::GAME_MENU)
+		else if (game->get_state() == GameState::GAME_MENU)
 		{
-			if (game.touched_board(touches[0].x, touches[0].y))
+			if (game->touched_board(touches[0].x, touches[0].y))
 			{
 				next_touch_interval = 10;
 				next_touch = millis();
 			}
 		}
-		else if (game.get_state() == GameState::GAME_RUNNING)
+		else if (game->get_state() == GameState::GAME_RUNNING)
 		{
-			if (game.touched_board(touches[0].x, touches[0].y))
+			if (game->touched_board(touches[0].x, touches[0].y))
 			{
 				next_touch_interval = 50;
 				next_touch = millis();
