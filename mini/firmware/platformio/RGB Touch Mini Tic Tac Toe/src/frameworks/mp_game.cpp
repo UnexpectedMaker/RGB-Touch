@@ -6,7 +6,7 @@
 
 #include "mp_game.h"
 
-void MultiplayerGame::set_num_layers(uint8_t num)
+void MultiplayerGame::set_num_players(uint8_t num)
 {
 	max_players = num;
 }
