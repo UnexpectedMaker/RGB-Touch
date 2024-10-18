@@ -121,7 +121,7 @@ void Share_ESPNOW::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int 
 				find_peers(true);
 				uint32_t peer_calc_value = calc_mac_val(new_peer.peer_addr);
 
-				if ( game == nullptr ) {
+				if ( !game ) {
 					info_printf("Game not found - my calc? %d, peer calc? %d\n", my_calc_value, peer_calc_value);
 					audio_player.play_note(11, 11, 1.0, 1);
 				} 
@@ -142,7 +142,7 @@ void Share_ESPNOW::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int 
 	else
 	{
 		// TODO : Should we check its going to the right game ?
-		if ( game != nullptr && game->onDataRecv(mac_addr,data,data_len) ) {
+		if ( game && game->onDataRecv(mac_addr,data,data_len) ) {
 			return;
 		}
 
