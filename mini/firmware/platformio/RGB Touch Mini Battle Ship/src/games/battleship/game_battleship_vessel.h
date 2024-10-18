@@ -81,7 +81,7 @@ public:
 			return shipID;
 		}
 
-		uint8_t getHitsLeft() {
+		uint8_t get_hits_left() {
 			return (uint8_t) ( hits > 0 ? hits : 0);
 		}
 

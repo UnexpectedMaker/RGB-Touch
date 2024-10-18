@@ -41,22 +41,22 @@ static String battleship_state_names[] =
 
 enum BS_DataType : uint8_t
 {
-	WANT_TO_PLAY = 0,
-	SETUP_BOARD = 1, 
-	
+	WANT_TO_PLAY = 0,		// FUIURE to force them into this game mode
+	WAITING_TO_PLAY = 1, 
+
 	// TODO : more User is building board
 	// * allow user to rotate pieces
 	// ** Tap on piece rotates
 	// * allow user to move pieces 
 	// ** Select first then select area to move top or left most section
 
-	SEND_MOVE = 2, // More user fire at square
-	SEND_DESTROYED_SHIP = 3,
+	SEND_MOVE = 3, // More user fire at square
+	SEND_DESTROYED_SHIP = 4,
 
-	// 
-	SEND_ALIVE_SHIP = 4,
+	// End of game winner sends ships not destroyed
+	SEND_ALIVE_SHIP = 5,
 
-	END_GAME = 5,
+	END_GAME = 6,
 };
 
 struct bs_game_data_t
@@ -134,8 +134,11 @@ class BattleShip : public MultiplayerGame
 		void start_game();
 		void reset_game();
 		void end_game();	
-		uint8_t getHitsLeft();
-		void send_data(BS_DataType _type, uint8_t _x, uint8_t _y, uint8_t _id, uint8_t _misc);
+		uint8_t get_hits_left();
+
+		//
+		void send_command(BS_DataType _type, uint8_t _control);
+		void send_data(BS_DataType _type, uint8_t _misc, uint8_t _x, uint8_t _y, uint8_t _id);
 
 		// Debounce for no touch process , move to touch process to handle release
 		int lastPressedTime = 0;
