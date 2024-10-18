@@ -139,21 +139,15 @@ void Share_ESPNOW::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int 
 			}
 		}
 	}
-	else if (data_len == 3) // we'll need to capture incoming messages that are not share packets
+	else
 	{
-
-		if ( game == nullptr )
-		{
-			info_println("Game is null, data recieved is dropped.");
+		// TODO : Should we check its going to the right game ?
+		if ( game != nullptr && game->onDataRecv(mac_addr,data,data_len) ) {
 			return;
 		}
 
-		if ( !game->onDataRecv(mac_addr,data,data_len) ) {
-			info_println("Game failed to accept data recieved.");
-		}
-	}
-	else
-	{
+//			info_println("Game failed to accept data recieved.");
+
 		// info_print("Data: ");
 		// for (int i = 0; i < data_len; i++)
 		// {
@@ -205,7 +199,13 @@ void Share_ESPNOW::find_peers(bool force)
 
 		if (result == ESP_OK)
 		{
-			info_println("Broadcast message sent successfully");
+			for (auto &peer : peers)
+			{
+
+				//peers.data
+			}
+			
+			info_printf("Broadcast message sent successfully : %d\n",peers.size());
 		}
 		else
 		{
@@ -249,23 +249,6 @@ bool Share_ESPNOW::send_gamedata(uint8_t *raw_ptr, uint8_t data_size)
 
 	return (result == ESP_OK);
 }
-
-/* Move to game 
-bool Share_ESPNOW::send(game_data_chunk_t chunk)
-{
-	uint8_t *raw_ptr = chunk.raw;
-	esp_err_t result = ESP_FAIL;
-	uint8_t attemps = 0;
-
-	while (result != ESP_OK && attemps++ < 5)
-	{
-		delay(20);
-		result = esp_now_send(peers[0].peer_addr, raw_ptr, Elements(chunk.raw));
-	}
-
-	return (result == ESP_OK);
-}
-*/
 
 // Wrapper for the send callback
 void Share_ESPNOW::onDataSentWrapper(const uint8_t *mac_addr, esp_now_send_status_t status)

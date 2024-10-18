@@ -188,8 +188,9 @@ void AudioClass::play_wav(const char *wav_name, bool force)
 		return;
 
 	// If we have a game , lets ask it first for wav data
-	if ( game != nullptr ) {
+	if ( game ) {
 		SFX gameWav = game->get_game_wave_file(wav_name);
+		info_printf("LOOKING FOR SIZE[%d] IN GAME\n",gameWav.size);
 		if ( gameWav.array && gameWav.size > 0 ) {
 			file = new AudioFileSourcePROGMEM(gameWav.array, gameWav.size);
 		}
@@ -199,7 +200,11 @@ void AudioClass::play_wav(const char *wav_name, bool force)
 		file = new AudioFileSourcePROGMEM(wav_files[wav_name].array, wav_files[wav_name].size);
 	}
 
-	wav->begin(file, out);
+	if ( file ) {
+		wav->begin(file, out);
+	} else {
+		info_printf("play_wav[%s] Not Found\n",wav_name);
+	}
 }
 
 void AudioClass::play_wav_queue(const char *wav_name)
@@ -215,8 +220,25 @@ void AudioClass::play_wav_queue(const char *wav_name)
 	else
 	{
 		info_printf("loading %s to queue\n", wav_name);
-		file = new AudioFileSourcePROGMEM(wav_files[wav_name].array, wav_files[wav_name].size);
-		wav->begin(file, out);
+
+		// If we have a game , lets ask it first for wav data
+		if ( game ) {
+			SFX gameWav = game->get_game_wave_file(wav_name);
+			if ( gameWav.array && gameWav.size > 0 ) {
+				file = new AudioFileSourcePROGMEM(gameWav.array, gameWav.size);
+			}
+		}
+
+		if ( !file ) {
+			file = new AudioFileSourcePROGMEM(wav_files[wav_name].array, wav_files[wav_name].size);
+		}
+
+
+		if ( file ) {
+			wav->begin(file, out);
+		} else {
+			info_printf("play_wav_queue[%s] Not Found\n",wav_name);
+		}
 	}
 }
 
