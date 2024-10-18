@@ -26,9 +26,9 @@ TicTacToe::TicTacToe()
 	// 	board[i] = 0;
 }
 
-void TicTacToe::send_data(DataType type, uint8_t data0, uint8_t data1)
+void TicTacToe::send_data(TTT_DataType type, uint8_t data0, uint8_t data1)
 {
-	game_data_chunk_t data;
+	ttt_game_data_chunk_t data;
 	data.data.dtype = (uint8_t)type;
 	data.data.data0 = data0;
 	data.data.data1 = data1;
@@ -52,12 +52,12 @@ bool TicTacToe::touched_board(uint8_t x, uint8_t y)
 				if (x < 6)
 				{
 					player_piece = BoardPiece::CROSS;
-					send_data(DataType::SET_PIECE, (uint8_t)BoardPiece::CIRCLE, 0);
+					send_data(TTT_DataType::SET_PIECE, (uint8_t)BoardPiece::CIRCLE, 0);
 				}
 				else
 				{
 					player_piece = BoardPiece::CIRCLE;
-					send_data(DataType::SET_PIECE, (uint8_t)BoardPiece::CROSS, 0);
+					send_data(TTT_DataType::SET_PIECE, (uint8_t)BoardPiece::CROSS, 0);
 				}
 
 				my_turn = true;
@@ -99,11 +99,11 @@ bool TicTacToe::set_position(uint8_t position, uint8_t piece)
 
 			if (winning_player > 0)
 			{
-				send_data(DataType::END_GAME, position, piece);
+				send_data(TTT_DataType::END_GAME, position, piece);
 			}
 			else
 			{
-				send_data(DataType::SEND_MOVE, position, piece);
+				send_data(TTT_DataType::SEND_MOVE, position, piece);
 			}
 
 			my_turn = false;
@@ -133,6 +133,10 @@ void TicTacToe::update_position(uint8_t position, uint8_t piece)
 				my_turn = true;
 		}
 	}
+}
+
+void TicTacToe::update_loop()
+{
 }
 
 void TicTacToe::display_game()
@@ -318,6 +322,11 @@ void TicTacToe::reset_game()
 	set_state(GameState::GAME_MENU);
 }
 
+void TicTacToe::kill_game()
+{
+	info_printf("Kill game while in %s\n", game_state_names[(uint8_t) get_state() ]);
+}
+
 void TicTacToe::set_state(GameState s)
 {
 	info_printf("New State will be: %s\n", game_state_names[(uint8_t)s]);
@@ -332,7 +341,12 @@ void TicTacToe::set_state(GameState s)
 
 bool TicTacToe::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len)
 {
-	game_data_chunk_t *new_packet = reinterpret_cast<game_data_chunk_t *>((uint8_t *)data);
+	// not for us , this needs to be updated to check data for a specific Key
+	if (data_len != 3) {
+		return false;
+	}
+
+	ttt_game_data_chunk_t *new_packet = reinterpret_cast<ttt_game_data_chunk_t *>((uint8_t *)data);
 
 	info_print("Data: ");
 	for (int i = 0; i < data_len; i++)
@@ -342,7 +356,7 @@ bool TicTacToe::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int dat
 
 	info_println();
 
-	if ((DataType)data[0] == DataType::SEND_MOVE || (DataType)data[0] == DataType::END_GAME)
+	if ((TTT_DataType)data[0] == TTT_DataType::SEND_MOVE || (TTT_DataType)data[0] == TTT_DataType::END_GAME)
 	{
 		update_position((uint8_t)data[1], (BoardPiece)(uint8_t)data[2]);
 	}

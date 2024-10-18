@@ -4,7 +4,7 @@
 #include "../../audio/audio.h"
 #include "../../frameworks/mp_game.h"
 
-enum DataType : uint8_t
+enum TTT_DataType : uint8_t
 {
 	WANT_TO_PLAY = 0,
 	SET_PIECE = 1,
@@ -18,7 +18,7 @@ enum BoardPiece : uint8_t
 	CIRCLE = 1,
 	CROSS = 2,
 };
-struct game_data_t
+struct ttt_game_data_t
 {
 		uint8_t dtype;
 		uint8_t data0;
@@ -29,11 +29,11 @@ typedef union
 {
 		struct
 		{
-				game_data_t data;
+				ttt_game_data_t data;
 		} __attribute__((packed));
 
-		uint8_t raw[sizeof(game_data_t)];
-} game_data_chunk_t;
+		uint8_t raw[sizeof(ttt_game_data_t)];
+} ttt_game_data_chunk_t;
 
 class TicTacToe : public MultiplayerGame
 {
@@ -46,19 +46,15 @@ class TicTacToe : public MultiplayerGame
 		bool set_position(uint8_t position, uint8_t piece);
 
 		uint8_t check_winner();
-		void send_data(DataType type, uint8_t data0, uint8_t data1);
+		void send_data(TTT_DataType type, uint8_t data0, uint8_t data1);
 
 		// Virtual functions override 
-		void start_game(uint8_t piece) override;
-		void reset_game() override;
-		void end_game() override;
-
 		void set_state(GameState s) override;
 	   	void display_game() override;
 		bool touched_board(uint8_t x, uint8_t y) override;
+    	void update_loop() override;
+		void kill_game() override;
 
-		void update_position(uint8_t position, uint8_t piece) override;
-		void set_piece(uint8_t piece) override;
 		bool onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len) override;
 		SFX get_game_wave_file(const char *wav_name) override;
 
@@ -66,6 +62,14 @@ class TicTacToe : public MultiplayerGame
 		uint16_t wait_period = 150;
 
 	private:
+
+		void start_game(uint8_t piece);
+		void reset_game();
+		void end_game();
+
+		void update_position(uint8_t position, uint8_t piece);
+		void set_piece(uint8_t piece);
+
 		std::map<const char *, SFX> game_wav_files;
 
 		uint8_t board[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};

@@ -212,6 +212,10 @@ void loop()
 		}
 	}
 
+	if ( game ) {
+		game->update_loop();
+	}
+
 	display.update();
 
 	wifi_controller.loop();

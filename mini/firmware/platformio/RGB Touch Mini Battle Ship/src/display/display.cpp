@@ -273,6 +273,17 @@ void MatrixDisplay::fade_leds_to(uint8_t val)
 {
 	fadeToBlackBy(leds, NUM_LEDS, val);
 }
+
+void MatrixDisplay::draw_dot(Dot p)
+{
+	_matrix->writePixel(p.x, p.y, p.color);
+}
+
+void MatrixDisplay::draw_single(uint8_t x, uint8_t y, uint32_t col)
+{
+	_matrix->writePixel(x, y, col);
+}
+
 void MatrixDisplay::draw_line(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, uint32_t col)
 {
 	_matrix->drawLine(x0, y0, x1, y1, col);
