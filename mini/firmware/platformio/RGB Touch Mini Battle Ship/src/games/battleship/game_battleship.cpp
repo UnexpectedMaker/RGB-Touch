@@ -120,7 +120,7 @@ void BattleShip::change_game_state(BattleShipState s)
 				ships_kiiled.clear();
 			}
 
-			// AI Tester
+			// AI Tester - move to Class 
 			{
 				tempLastms = millis();
 
@@ -142,6 +142,7 @@ void BattleShip::change_game_state(BattleShipState s)
 				}
 			}
 
+			// choose demo
 			if (share_espnow.getInstance().has_peer())
 			{
 				set_state(GameState::GAME_MENU);
@@ -310,136 +311,148 @@ void BattleShip::update_loop()
 	// Start a demo mode for now
 	if (get_state() == GameState::GAME_WAITING)
 	{
-		// TODO : Toggle between demo and waiting mode
+		// Toggle between demo and waiting mode
 		if (share_espnow.getInstance().has_peer()) {
 			kill_game();
 			return;
 		}
 
-		// If we have no setup , lets create a board - move to logic
+		// If we have no setup , lets create a board
 		if ( bs_state == BattleShipState::BS_NONE ) {
 			change_game_state( BattleShipState::BS_BOARD_SETUP );		
 		}
 		
-		// Demo Mode if waiting
+		// Waiting is Demo Mode for now
 		if ( bs_state == BattleShipState::BS_ACTIVE ) {
 
 			// 1/2 a Second fire rate
 			if ( millis() - tempLastms >= 500 ) {
 				tempLastms = millis();
 
-				uint32_t color = RGB_COLOR(0x7F,0x7F,0x7F);
-
-				// Was last shot a hit 
+				// TODO : improve by 
+				// * Knowing which direction caused a chain hit and carry in that direction
+				// * Using ships destroyed to know whats left, thus only looking where those ships can fit 
 				Dot shot = available_shots.back();
-				bool useRandomShot = true;
-				if ( !incoming_shots.empty() ) {
-					Dot oldShot = incoming_shots.back();
-					if ( oldShot.color != color ) {
+//				info_printf("Next Shot x: %d, y: %d\n", shot.x, shot.y );
+				// Do not look back if we are empty or last hit was a kill
+				if ( shot.color != KILL_COLOR && !shots_fired.empty() ) 
+				{
+					// Cycle last "X" to detect if one was a hit with open neighours
+					int aiLevel = (5*3); // Look back 5 * ai level (easy/meduim/hard)
+					int lookBackTo = constrain( (int) shots_fired.size()-aiLevel, 0, shots_fired.size() - 1);
 
-					    std::vector<int> connectedIndex;
+//					info_printf("Look back : %d from %d\n", lookBackTo , shots_fired.size()-1 );
 
-//						info_printf("LAST ONE HIT x: %d, y: %d\n", oldShot.x, oldShot.y );
-						// Find if all 4 directions are available
+					for( u_int checkShot = shots_fired.size()-1; checkShot >= lookBackTo;  checkShot-- ) 
+					{
+						Dot oldShot = shots_fired[checkShot];
+
+						// If no hit, next option
+						if ( oldShot.color == SHOT_COLOR ) {
+//							info_printf("Shot Past[%d] x: %d, y: %d\n",checkShot, oldShot.x, oldShot.y );
+							continue;
+						}
+
+						// if was a kill, keep it to the pulled
+						if ( oldShot.color == KILL_COLOR ) {
+//							info_printf("Kill Past[%d] x: %d, y: %d\n",checkShot, oldShot.x, oldShot.y );
+							break;
+						}
+
+						std::vector<int> connectedIndex;
+//						info_printf("Find Neighbours[%d] x: %d, y: %d\n",checkShot , oldShot.x, oldShot.y );
+
+						// Build a list of connected options still available
 						for (auto i = 0; i < available_shots.size(); i++)
 						{
-							if ( available_shots[i].y == oldShot.y ) {
-								if (available_shots[i].x == oldShot.x-1)
-								{
+							// TODO : only allow matches in a direction we discovered 
+
+							if ( available_shots[i].y == oldShot.y ) 
+							{
+								if (available_shots[i].x == oldShot.x-1) {
 									connectedIndex.push_back(i);
 									info_printf("Neightbour[%d] x: %d, y: %d\n",i , oldShot.x-1, oldShot.y );
 								}
-								if (available_shots[i].x == oldShot.x+1)
-								{
+								if (available_shots[i].x == oldShot.x+1) {
 									connectedIndex.push_back(i);
 									info_printf("Neightbour[%d] x: %d, y: %d\n",i , oldShot.x+1, oldShot.y );
 								}
 							}
 							
-							if ( available_shots[i].x == oldShot.x ) {
-								if (available_shots[i].y == oldShot.y-1)
-								{
+							if ( available_shots[i].x == oldShot.x ) 
+							{
+								if (available_shots[i].y == oldShot.y-1) {
 									connectedIndex.push_back(i);
 									info_printf("Neightbour[%d] x: %d, y: %d\n",i , oldShot.x, oldShot.y-1 );
 								}
-								if (available_shots[i].y == oldShot.y+1)
-								{
+								if (available_shots[i].y == oldShot.y+1){
 									connectedIndex.push_back(i);
 									info_printf("Neightbour[%d] x: %d, y: %d\n",i , oldShot.x, oldShot.y+1 );
 								}
 							}
 						}
 
-						// Pick an available connector
-						// Future use might want to remember which way we went
-						if ( connectedIndex.size() > 0 ) {
-							
-							int index = 0;
-
-							if ( connectedIndex.size() > 1 ) {
-								index = std::rand() % connectedIndex.size();
-							}
-							info_printf("Choose %d %d\n", index, connectedIndex.size() );
-
-							index = connectedIndex[index];
-
-							std::swap( available_shots[index], available_shots[available_shots.size() - 1] );
-
-							info_printf("Swaping %d with last [%d] \n", index,connectedIndex.size() - 1 );
-
-							shot = available_shots.back();
+						// If no connectors next look back
+						if ( connectedIndex.size() <= 0 ) {
+							info_printf("No Neightbour\n" );
+							continue;
 						}
 
-						// 
-						info_printf("LAST ONE HIT ALT SPOT x: %d, y: %d\n", shot.x, shot.y );
+						// Pick an available connector
+						// TODO : remember which way we went
+						int index = 0;
+
+						if ( connectedIndex.size() > 1 ) {
+							index = std::rand() % connectedIndex.size();
+						}
+
+						// move choice near a neightbour to last elemebt
+						index = connectedIndex[index];
+						std::swap( available_shots[index], available_shots[available_shots.size() - 1] );
+
+						shot = available_shots.back();
+						info_printf("Shoot Neightbour x: %d, y: %d\n" , shot.x, shot.y );
+						break;
 					}
 				}
 
-				// Drop last one
+				// Drop last one , either original or latest swap
 				available_shots.pop_back();
 
-				// Check if location already hit , this shouldnt be needed for AI
-				for (Dot &fired : shots_fired) {
-
-					// Test exit as this is the last part if already fired here
-					if ( fired.x == shot.x && fired.y == shot.y ) {
-						info_printf("ERROR HOW IS IT ALREADY USED x: %d, y: %d\n", shot.x, shot.y );
-						return;
-					}
-				}
-
-				// Check for any ship it
 				std::string sfx = "beep";
+
+				uint16_t fireColor = SHOT_COLOR;	
 
 				for (SHIP &vessel : ships) {
 					int8_t hitsLeft = vessel.hitCheck(shot.x, shot.y,false);
 
 					// Future to test kill vessel if count = 0
 					if ( hitsLeft >= 0 ) {
-						color = RGB_COLOR(0xCF,0,0);
 						if ( hitsLeft == 0 ) {
+							fireColor = KILL_COLOR;
 							sfx = "destroy";
 						} else {
+							fireColor = HIT_COLOR;
 							sfx = "hit";
 						}
-
-//		audio_player.play_wav_queue("hit");
 
 						// Force vessel into destoryed
 						if ( hitsLeft == 0 ) {
 							ships_kiiled.push_back( vessel.duplicate(true) );
-
-							audio_player.play_note(0, 0, 1, 0.2);
-						} else {
 							audio_player.play_note(6, 11, 1.0, 1);
+						} else {
+							audio_player.play_note(0, 6, 1.0, 0.2);
 						}
 					}
 				}
 
-		//		audio_player.play_wav_queue("beep");
+				//
+				// audio_player.play_wav_queue(sfx);
 
-				Dot d = Dot(shot.x, shot.y, color);
-				incoming_shots.push_back(d);
+				// Set fired in demo
+				Dot d = Dot(shot.x, shot.y, fireColor);
+				shots_fired.push_back(d);
+				info_printf("Shoot x: %d, y: %d\n" , shot.x, shot.y );
 			}
 		}
 	} else if (get_state() == GameState::GAME_MENU) {
@@ -652,18 +665,20 @@ void BattleShip::renderGameBoard(bool demoMode)
 					vessel.draw();
 				}
 
-				for (Dot &shot : incoming_shots) {
-					display.draw_dot(shot);
-				}
-
 				if ( demoMode ) {
-					for (SHIP &vessel : ships) {
-						vessel.draw_destroyed();
+					// demo is us firing on us
+					for (Dot &shot : shots_fired) {
+						display.draw_dot(shot);
 					}
 				} else {
-					for (SHIP &vessel : ships_kiiled) {
-						vessel.draw_destroyed();
+					// game mode is them firing on us
+					for (Dot &shot : incoming_shots) {
+						display.draw_dot(shot);
 					}
+				}
+
+				for (SHIP &vessel : ships) {
+					vessel.draw_destroyed();
 				}
 			}
 		}
@@ -679,14 +694,8 @@ void BattleShip::renderGameBoard(bool demoMode)
 				vessel.draw();
 			}
 
-			if ( demoMode ) {
-				for (Dot &shot : incoming_shots) {
-					display.draw_dot(shot);
-				}
-			} else {
-				for (Dot &shot : shots_fired) {
-					display.draw_dot(shot);
-				}
+			for (Dot &shot : shots_fired) {
+				display.draw_dot(shot);
 			}
 
 			// Ships killed overlayed
@@ -879,55 +888,31 @@ void BattleShip::createRandomBoard()
 			switch ( std::rand() % 4 ) {
 
 				default:
-					startY -= shipID;
-
-					if ( startY <= 0 ) {
-						startY = (std::rand()&1);
-					}
-
+					startY = constrain(startY-shipLength, (std::rand()&1), MATRIX_SIZE-1);
 					addY = 1;
 				break;
 
 				case 1:
-					if ( startX+shipLength >= MATRIX_SIZE ) {
-						startX = MATRIX_SIZE-shipLength-1-(std::rand()&1);
-					}
+					startX = constrain(startX+shipLength, 0, MATRIX_SIZE-1-(std::rand()&1));
 					addX = 1;
 				break;
 
 				case 2:
-					if ( startY+shipLength >= MATRIX_SIZE ) {
-						startY = MATRIX_SIZE-shipLength-1-(std::rand()&1);
-					}
-
+					startY = constrain(startY+shipLength, 0, MATRIX_SIZE-1-(std::rand()&1));
 					addY = 1;
 				break;
 
 				case 3:
-					startX -= shipLength;
-
-					if ( startX <= 0 ) {
-						startX = (std::rand()&1);
-					}
-
+					startX = constrain(startX-shipLength, (std::rand()&1), MATRIX_SIZE-1);
 					addX = 1;
 				break;
 
 			}
 
-			// Bring off edge if not allowed
-			if ( noEdgeShips ) {
-				if ( startX <= 0 ) {
-					startX = 1;
-				} else  if ( startX+shipLength >= MATRIX_SIZE-1 ) {
-					startX = MATRIX_SIZE-shipLength-1;
-				}
-
-				if ( startY <= 0 ) {
-					startY = 1;
-				} else if ( startY+shipLength >= MATRIX_SIZE-1 ) {
-					startY = MATRIX_SIZE-shipLength-1;
-				}
+			// no Edge , keep any part of the ship out of the edges
+			if ( noEdgeShips ) {			
+				startX = constrain(startX, 1, MATRIX_SIZE-shipLength-2);
+				startY = constrain(startY, 1, MATRIX_SIZE-shipLength-2);
 			}
 		
 			bool touching = false;
@@ -947,7 +932,6 @@ void BattleShip::createRandomBoard()
 
 			info_printf(" ship %d, x: %d, y: %d, len: %d\n",shipID , startX, startY, shipLength);					
 
-			// Create ships to process
 			ships.push_back( SHIP(shipID,shipLength,startX, startY,  addX > addY , display.Color(SHIP_COLOR[shipID][0], SHIP_COLOR[shipID][1], SHIP_COLOR[shipID][2])) );
 
 			shipAfloat = true;

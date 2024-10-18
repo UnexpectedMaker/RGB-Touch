@@ -38,7 +38,7 @@ struct Dot
 		int y;
 		uint32_t color = 0;
 
-		Dot(int _x, int _y, uint16_t _col) : x(_x), y(_y), color(_col) {}
+		Dot(int _x, int _y, uint32_t _col) : x(_x), y(_y), color(_col) {}
 };
 
 struct ICON

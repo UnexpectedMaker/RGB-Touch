@@ -1,6 +1,6 @@
 #pragma once
 
-#define RGB_COLOR(r,g,b) (uint32_t)((uint16_t)(r & 0xF8) << 8) | ((uint16_t)(g & 0xFC) << 3) | (b >> 3);
+#define RGB_COLOR(r,g,b) (uint16_t)((uint16_t)(r & 0xF8) << 8) | ((uint16_t)(g & 0xFC) << 3) | (b >> 3);
 
 #include <map>
 #include "../../audio/audio.h"
@@ -10,6 +10,10 @@
 // This could be defined when we add the games to the core
 // then commands only for that ID are sent to that game
 const uint8_t GAME_ID = 0;
+
+const uint16_t SHOT_COLOR = RGB_COLOR(0x7F,0x7F,0x7F);
+const uint16_t HIT_COLOR = RGB_COLOR(0xCF,0x00,0x00);
+const uint16_t KILL_COLOR = RGB_COLOR(0xFF,0x00,0x00);
 
 enum BattleShipState : uint8_t
 {

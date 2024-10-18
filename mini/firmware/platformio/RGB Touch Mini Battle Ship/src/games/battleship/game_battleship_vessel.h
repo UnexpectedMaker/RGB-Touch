@@ -28,7 +28,7 @@ const uint8_t SHIP_COLOR[7][3] = {
 	{  0x00, 0x00, 0x00 },		// empty
 	{  0x00, 0x00, 0xC0 },		// SUBMARINE
 	{  0x00, 0xC0, 0x00 },		// DESTROYER
-	{  0x40, 0x00, 0xC0 },		// CRUISER
+	{  0x40, 0x00, 0x80 },		// CRUISER
 	{  0x00, 0xC0, 0xC0 },		// BATTLESHIP
 	{  0xC0, 0xC0, 0x00 },		// AIRCRAFT
 };
@@ -39,7 +39,7 @@ class SHIP
 		ShipType shipID; // Getter 
 		uint8_t len;
 		int8_t hits;
-		uint32_t color;
+		uint16_t color;
 
 		// Box of ship (top/left)
 		int sx;
@@ -58,7 +58,7 @@ class SHIP
 		bool flasher = false;
 
 public:		
-		SHIP(ShipType _shipID, uint8_t _squares, int _x, int _y, bool _horizontal, uint32_t _col, bool killShip = false) 
+		SHIP(ShipType _shipID, uint8_t _squares, int _x, int _y, bool _horizontal, uint16_t _col, bool killShip = false) 
 			: shipID(_shipID), len(_squares), sx(_x), sy(_y) , horiz(_horizontal) , color(_col) 
 			{
 				// hits are 1 to x count 
@@ -130,8 +130,8 @@ public:
 			// Pulse, we could create an array to just walk though with indexing
 			// TODO : Const cap / steps
 			sunkCounter = constrain(sunkCounter + (flasher ? 3 : -3), 128, 255);
-			uint32_t destoryedRCol = RGB_COLOR(sunkCounter,0,0);
-			uint32_t destoryedOCol = RGB_COLOR(sunkCounter,(sunkCounter*65/100),0);
+			uint16_t destoryedRCol = RGB_COLOR(sunkCounter,0,0);
+			uint16_t destoryedOCol = RGB_COLOR(sunkCounter,(sunkCounter*65/100),0);
 
 			if ( sunkCounter == 192 || sunkCounter == 255) {
 				flasher = !flasher;
