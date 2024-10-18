@@ -1,8 +1,17 @@
 /*
- * A multi-player Tic Tac Toe game
+ * A multi-player Battle Ship game
  *
  * Uses ESP-NOW for device to device communication
+
+audio_player.play_note(6, 11, 1.0, 1);
+audio_player.play_note(11, 11, 1.0, 1);
+audio_player.play_note(0, 0, 1.0, 1);
+
+
  */
+
+#include <algorithm>
+#include <vector>
 
 #include "../../display/display.h"
 #include "../../touch/touch.h"
@@ -12,75 +21,208 @@
 #include "game_battleship.h"
 //#include "audio/voice/.h"
 
+#include "audio/voice/voice_miss.h"
+#include "audio/voice/voice_hit.h"
+
+
 BattleShip battleShip;	// Create instance , so we can notify core
+
+// Temp vars for now
+const int DEBONCE = 100;	// 1/10 of a second 
+int tempLastms = 0;
+uint8_t game_over_counter = 0;
 
 BattleShip::BattleShip()
 {
 	// TODO : Core to have multi game options
 	game = this;	// Base class to take init
 	
-
+	// ADD SFX used by game
 	game_wav_files = {
-//		{"tictactoe", SFX(, sizeof())},
+		{"miss", SFX(voice_miss, sizeof(voice_miss))},
+		{"hit", SFX(voice_hit, sizeof(voice_hit))},
 	};
+
+	// Seed rand with deviceID , this should produce differed rands on different devices
+    uint64_t deviceMac = 0LL;
+    esp_efuse_mac_get_default((uint8_t*) (&deviceMac));
+	std::srand( (unsigned int) deviceMac );
 }
 
-void BattleShip::send_data(DataType type, uint8_t data0, uint8_t data1)
+// 
+void BattleShip::send_data(BS_DataType _type, uint8_t _x, uint8_t _y, uint8_t _id = 0, uint8_t _misc = 0)
 {
-	game_data_chunk_t data;
-	data.data.dtype = (uint8_t)type;
-	data.data.data0 = data0;
-	data.data.data1 = data1;
+	bs_game_data_chunk_t data;
+	data.data.dtype = (uint8_t)_type;
+	data.data.data_x = _x;
+	data.data.data_y = _y;
+	data.data.data_id = _id;
+	data.data.data_misc = _misc;
 	share_espnow.getInstance().send_gamedata(data.raw, Elements(data.raw));
 }
 
 bool BattleShip::touched_board(uint8_t x, uint8_t y)
 {
-	if (winning_player > 0)
+	lastTouch.clear();
+//	info_printf("touched_board count?: %d\n", touch.touches.size());
+
+	 if ( bs_state == BattleShipState::BS_ENDING )
 		return false;
 
-	if (moves_left == 0)
-		return false;
-
-	// TODO : setup board/ could be menu 
+	// hold the last point for when we have no touches
+	Point p =  Point(x, y, 0);
+	lastTouch.clear();
+	lastTouch.push_back(p);
+	lastPressedTime = millis();
 
 	if (get_state() == GameState::GAME_MENU)
 	{
-		/*
+//		info_printf("Game State: %s\n", game_state_names[(uint8_t)get_state()]);
+
 		if ((host_starts && is_hosting()) || (!host_starts && !is_hosting()))
 		{
-			if (player_piece == BoardPiece::EMPTY)
-			{
-				if (x < 6)
-				{
-					player_piece = BoardPiece::CROSS;
-					send_data(DataType::SET_PIECE, (uint8_t)BoardPiece::CIRCLE, 0);
-				}
-				else
-				{
-					player_piece = BoardPiece::CIRCLE;
-					send_data(DataType::SET_PIECE, (uint8_t)BoardPiece::CROSS, 0);
-				}
-
-				my_turn = true;
-				display.clear();
-				set_state(GameState::GAME_RUNNING);
-			}
+			return true;
 		}
-		return true;
-		*/
-	}
+	} 
 	else if (get_state() == GameState::GAME_RUNNING)
 	{
+		if ( my_turn ) {
 
-		uint8_t pos = x / 4 + ((y / 4) * 3);
-		// info_printf("x: %d, y: %d, pos: %d\n", x, y, pos);
-		return (set_position(pos, (uint8_t) player_piece));
-	}
+			return true;
+		}
+	} 
 
 	return false;
 }
 
+// Change state , logic and clear
+void BattleShip::change_game_state(BattleShipState s)
+{
+	bs_state = s;
+	info_printf("Change Game Battle State: %s\n", battleship_state_names[(uint8_t)bs_state]);
+
+	switch( bs_state ) {
+
+		// TODO : have a demo mode ?
+
+		//
+		case BattleShipState::BS_BOARD_SETUP:
+		{
+			// Make function
+			{
+				ships.clear();
+
+				battleShip.createRandomBoard();
+
+				// Clear game data before we start a battle
+				shots_fired.clear();
+				incoming_shots.clear();
+				ships_kiiled.clear();
+			}
+
+			// AI Tester
+			{
+				tempLastms = millis();
+
+				// Build possible shots
+				available_shots.clear();
+				for ( u_int y=0; y < MATRIX_SIZE; y++) {
+					for ( u_int x=0; x < MATRIX_SIZE; x++) {
+
+						Dot d = Dot(x, y, 0);
+						available_shots.push_back(d);
+					}
+				}
+
+				// Lets Randomize the possible shots list
+				for (u_int i = 0; i < available_shots.size()-1; i++)
+				{
+					int target = i + 1 + rand() % (available_shots.size() - i - 1);
+					std::swap( available_shots[i], available_shots[target] );
+				}
+			}
+
+			if (share_espnow.getInstance().has_peer())
+			{
+				set_state(GameState::GAME_MENU);
+				bs_state = BattleShipState::BS_BOARD_READY;
+			}
+			else 
+			{
+				// Demo go straight to BS Active 
+				bs_state = BattleShipState::BS_ACTIVE;
+			}
+		}
+		break;
+
+		case BattleShipState::BS_ENDING:
+		{
+			tempLastms = millis();
+			game_over_counter = 10;
+		}
+		break;
+
+	}
+}
+
+void BattleShip::processLastTouch(uint8_t x, uint8_t y)
+{
+	if (get_state() == GameState::GAME_MENU)
+	{
+		info_printf("processLastTouch Game State: %s\n", game_state_names[(uint8_t)get_state()]);
+
+		if ((host_starts && is_hosting()) || (!host_starts && !is_hosting()))
+		{
+			switch(bs_state) {
+
+				// reset if touched while in board ready 
+				case BattleShipState::BS_BOARD_READY:
+				{
+					change_game_state( BattleShipState::BS_BOARD_SETUP );
+				}
+				break;
+			}
+
+/*
+			if (player_piece == BoardPiece::EMPTY)
+			{
+				if (x < 6)
+				{
+//					player_piece = BoardPiece::CROSS;
+//					send_data(DataType::SET_PIECE, (uint8_t)BoardPiece::CIRCLE, 0);
+				}
+				else
+				{
+//					player_piece = BoardPiece::CIRCLE;
+//					send_data(DataType::SET_PIECE, (uint8_t)BoardPiece::CROSS, 0);
+				}
+
+				my_turn = true;
+
+				set_state(GameState::GAME_RUNNING);
+			}
+			*/
+		}
+	} else if (get_state() == GameState::GAME_RUNNING) {
+
+		info_printf("GAME TOUCH ACTIVE x: %d, y: %d - %s\n", x, y , battleship_state_names[(uint8_t)bs_state]);
+
+		if ( bs_state == BattleShipState::BS_ACTIVE ) {
+
+			if ( my_turn ) {
+
+
+				// TODO : check if have fired here before 
+				// * Send fire and return
+			}
+
+			// TODO : play error
+		}
+	}
+
+
+}
+/*
 bool BattleShip::set_position(uint8_t position, uint8_t piece)
 {
 	if (!my_turn)
@@ -118,7 +260,9 @@ bool BattleShip::set_position(uint8_t position, uint8_t piece)
 	audio_player.play_note(0, 0, 1, 0.2);
 	return false;
 }
+*/
 
+/*
 void BattleShip::update_position(uint8_t position, uint8_t piece)
 {
 	if (position < 9)
@@ -137,11 +281,241 @@ void BattleShip::update_position(uint8_t position, uint8_t piece)
 		}
 	}
 }
+*/
+
+
+
+void BattleShip::update_loop()
+{
+	// Lets make random cycle every loop
+	std::rand();
+
+	// Process last touch (ie on lift off)
+	if ( touch.touches.size() <= 0 && lastTouch.size() > 0 )
+	{
+		// Debounce .. we should move this into touch to get an up / down function
+		if ( millis() - lastPressedTime >= DEBONCE ) 
+		{
+			battleShip.processLastTouch(lastTouch[0].x, lastTouch[0].y);
+			lastTouch.clear();
+		}
+	}
+
+	if (!share_espnow.getInstance().has_peer()) {
+//		info_printf("GAME STATE NO PEERS: %s\n", game_state_names[(uint8_t)get_state()]);
+	} else {
+//		info_printf("GAME STATE PEERS: %s\n", game_state_names[(uint8_t)get_state()]);
+	}
+
+	// Start a demo mode for now
+	if (get_state() == GameState::GAME_WAITING)
+	{
+		// TODO : Toggle between demo and waiting mode
+		if (share_espnow.getInstance().has_peer()) {
+			kill_game();
+			return;
+		}
+
+		// If we have no setup , lets create a board - move to logic
+		if ( bs_state == BattleShipState::BS_NONE ) {
+			change_game_state( BattleShipState::BS_BOARD_SETUP );		
+		}
+		
+		// Demo Mode if waiting
+		if ( bs_state == BattleShipState::BS_ACTIVE ) {
+
+			// 1/2 a Second fire rate
+			if ( millis() - tempLastms >= 500 ) {
+				tempLastms = millis();
+
+				uint32_t color = RGB_COLOR(0x7F,0x7F,0x7F);
+
+				// Was last shot a hit 
+				Dot shot = available_shots.back();
+				bool useRandomShot = true;
+				if ( !incoming_shots.empty() ) {
+					Dot oldShot = incoming_shots.back();
+					if ( oldShot.color != color ) {
+
+					    std::vector<int> connectedIndex;
+
+//						info_printf("LAST ONE HIT x: %d, y: %d\n", oldShot.x, oldShot.y );
+						// Find if all 4 directions are available
+						for (auto i = 0; i < available_shots.size(); i++)
+						{
+							if ( available_shots[i].y == oldShot.y ) {
+								if (available_shots[i].x == oldShot.x-1)
+								{
+									connectedIndex.push_back(i);
+									info_printf("Neightbour[%d] x: %d, y: %d\n",i , oldShot.x-1, oldShot.y );
+								}
+								if (available_shots[i].x == oldShot.x+1)
+								{
+									connectedIndex.push_back(i);
+									info_printf("Neightbour[%d] x: %d, y: %d\n",i , oldShot.x+1, oldShot.y );
+								}
+							}
+							
+							if ( available_shots[i].x == oldShot.x ) {
+								if (available_shots[i].y == oldShot.y-1)
+								{
+									connectedIndex.push_back(i);
+									info_printf("Neightbour[%d] x: %d, y: %d\n",i , oldShot.x, oldShot.y-1 );
+								}
+								if (available_shots[i].y == oldShot.y+1)
+								{
+									connectedIndex.push_back(i);
+									info_printf("Neightbour[%d] x: %d, y: %d\n",i , oldShot.x, oldShot.y+1 );
+								}
+							}
+						}
+
+						// Pick an available connector
+						// Future use might want to remember which way we went
+						if ( connectedIndex.size() > 0 ) {
+							
+							int index = 0;
+
+							if ( connectedIndex.size() > 1 ) {
+								index = std::rand() % connectedIndex.size();
+							}
+							info_printf("Choose %d %d\n", index, connectedIndex.size() );
+
+							index = connectedIndex[index];
+
+							std::swap( available_shots[index], available_shots[available_shots.size() - 1] );
+
+							info_printf("Swaping %d with last [%d] \n", index,connectedIndex.size() - 1 );
+
+							shot = available_shots.back();
+						}
+
+						// 
+						info_printf("LAST ONE HIT ALT SPOT x: %d, y: %d\n", shot.x, shot.y );
+					}
+				}
+
+				// Drop last one
+				available_shots.pop_back();
+
+				// Check if location already hit , this shouldnt be needed for AI
+				for (Dot &fired : shots_fired) {
+
+					// Test exit as this is the last part if already fired here
+					if ( fired.x == shot.x && fired.y == shot.y ) {
+						info_printf("ERROR HOW IS IT ALREADY USED x: %d, y: %d\n", shot.x, shot.y );
+						return;
+					}
+				}
+
+				// Check for any ship it
+				std::string sfx = "beep";
+
+				for (SHIP &vessel : ships) {
+					int8_t hitsLeft = vessel.hitCheck(shot.x, shot.y,false);
+
+					// Future to test kill vessel if count = 0
+					if ( hitsLeft >= 0 ) {
+						color = RGB_COLOR(0xCF,0,0);
+						if ( hitsLeft == 0 ) {
+							sfx = "destroy";
+						} else {
+							sfx = "hit";
+						}
+
+//		audio_player.play_wav_queue("hit");
+
+						// Force vessel into destoryed
+						if ( hitsLeft == 0 ) {
+							ships_kiiled.push_back( vessel.duplicate(true) );
+
+							audio_player.play_note(0, 0, 1, 0.2);
+						} else {
+							audio_player.play_note(6, 11, 1.0, 1);
+						}
+					}
+				}
+
+		//		audio_player.play_wav_queue("beep");
+
+				Dot d = Dot(shot.x, shot.y, color);
+				incoming_shots.push_back(d);
+			}
+		}
+	} else if (get_state() == GameState::GAME_MENU) {
+
+		// in menu reset board
+		if ( bs_state != BattleShipState::BS_BOARD_READY ) {
+			kill_game();
+			change_game_state( BattleShipState::BS_NONE );		
+		}
+
+
+	} 
+	
+	{
+		if (!share_espnow.getInstance().has_peer()) {
+//			info_printf("GAME STATE NO PEERS: %s\n", game_state_names[(uint8_t)get_state()]);
+		}
+
+		// 
+		if ( bs_state == BattleShipState::BS_NONE ) {
+			change_game_state( BattleShipState::BS_BOARD_SETUP );		
+		}
+	}
+
+	switch (bs_state) {
+
+		case BattleShipState::BS_BOARD_SETUP:
+		case BattleShipState::BS_BOARD_READY:
+		break;
+
+		case BattleShipState::BS_ACTIVE:
+		{
+			// Check END 
+			battleShip.check_end_game();
+
+			// TODO : logic on player ? 
+
+			break;
+		}
+
+		case BattleShipState::BS_ENDING:
+		{
+			// TODO : some form of animation
+			if ( millis() - tempLastms >= 1000 ) 
+			{
+				tempLastms = millis();
+
+				game_over_counter--;
+
+				if ( game_over_counter == 0 ) {
+					info_printf("Game Over to new board\n");
+					change_game_state( BattleShipState::BS_NONE );
+				}
+			}
+		}
+		break;
+	}
+}
 
 void BattleShip::display_game()
 {
-	if (get_state() == GameState::GAME_WAITING)
-	{
+
+	if (get_state() == GameState::GAME_WAITING) {
+		// DEMO MODE - move to logic 
+
+		// If we have no setup , lets create a board - move to logic
+		if ( bs_state == BattleShipState::BS_NONE ) {
+			display.clear();
+			change_game_state( BattleShipState::BS_BOARD_SETUP );
+		}
+
+		//
+		renderGameBoard(true);
+
+/*		
+		// TODO ? Change ?
 		if (millis() - next_display_update > wait_period)
 		{
 			next_display_update = millis();
@@ -149,7 +523,7 @@ void BattleShip::display_game()
 			display.fade_leds_to(80);
 			if (!share_espnow.getInstance().has_peer())
 			{
-				display.draw_line(waiting_radius[0], 0, waiting_radius[0], 11, display.Color(128, 0, 0));
+				display.draw_line(waiting_radius[0], 0, waiting_radius[0], 11, display.Color(0, 0, 128));
 				waiting_radius[0] += 1;
 				if (waiting_radius[0] == 12)
 					waiting_radius[0] = 0;
@@ -171,36 +545,16 @@ void BattleShip::display_game()
 				wait_period = 150;
 			}
 		}
+*/		
 	}
 	else if (get_state() == GameState::GAME_MENU)
 	{
-		display.clear();
-
-		if ((host_starts && is_hosting()) || (!host_starts && !is_hosting()))
-		{
-			display.show_text(4, 5, "?", display.Color(50, 50, 255));
-
-			display.show_icon(&display.icons["cross_small"], 1, 7, 255);
-			display.show_icon(&display.icons["circle_small"], 7, 7, 255);
-		}
-		else
-		{
-			display.show_icon(&display.icons["waiting"], 2, 2, 255);
-			display.icons["waiting"].cycle_frame();
-		}
+		// 
+		renderGameBoard(false);
 	}
 	else if (get_state() == GameState::GAME_RUNNING)
 	{
-		display.clear();
-
-		uint32_t line_col = (my_turn ? display.Color(220, 220, 220) : display.Color(100, 100, 100));
-
-		// Vertical Lines
-		display.draw_line(3, 0, 3, 10, line_col);
-		display.draw_line(7, 0, 7, 10, line_col);
-		// Horizontal Lines
-		display.draw_line(0, 3, 10, 3, line_col);
-		display.draw_line(0, 7, 10, 7, line_col);
+		renderGameBoard(false);
 /*
 		for (uint8_t i = 0; i < 9; i++)
 		{
@@ -215,7 +569,6 @@ void BattleShip::display_game()
 				found = true;
 				display.show_icon(&display.icons["circle_small"], piece_pos_x[i], piece_pos_y[i], pos_fader[i]);
 			}
-
 			if (found && winning_player == 0)
 				pos_fader[i] = constrain(pos_fader[i] + 10, 0, 255);
 		}
@@ -251,16 +604,113 @@ void BattleShip::display_game()
 				end_game();
 			}
 		}
-*/		
+*/
 	}
 	else if (get_state() == GameState::GAME_ENDED)
 	{
+		info_printf("GAME_ENDED State: %s\n", game_state_names[(uint8_t)get_state()]);
+
 		display.clear();
 	}
 }
 
-uint8_t BattleShip::check_winner()
+void BattleShip::renderGameBoard(bool demoMode)
 {
+	display.clear();
+
+	switch (bs_state) {
+
+		case BattleShipState::BS_BOARD_SETUP:
+		case BattleShipState::BS_BOARD_READY:
+		{
+			// Draw ships always
+			for (SHIP &vessel : ships) {
+				vessel.draw();
+			}
+		}
+		break;
+
+		case BattleShipState::BS_ACTIVE:
+		{
+			if ( my_turn ) 
+			{
+				// TODO : on my turn . shots_fired
+				for (Dot &shot : shots_fired) {
+					display.draw_dot(shot);
+				}
+
+				// show ships we killed
+				// * This will be sent from enemy when we kill a ship
+				for (SHIP &vessel : ships_kiiled) {
+					vessel.draw_destroyed();
+				}
+			} 
+			else
+			{
+				// TODO : on their turn . show my ships and over lay incomming_shots
+				for (SHIP &vessel : ships) {
+					vessel.draw();
+				}
+
+				for (Dot &shot : incoming_shots) {
+					display.draw_dot(shot);
+				}
+
+				if ( demoMode ) {
+					for (SHIP &vessel : ships) {
+						vessel.draw_destroyed();
+					}
+				} else {
+					for (SHIP &vessel : ships_kiiled) {
+						vessel.draw_destroyed();
+					}
+				}
+			}
+		}
+		break;
+
+		case BattleShipState::BS_ENDING:
+		{
+			// TODO : some form of animation??
+
+			// Show Enemy Ships alive
+			// * This would be sent when the game is over from enemy
+			for (SHIP &vessel : ships) { // ships_survied
+				vessel.draw();
+			}
+
+			if ( demoMode ) {
+				for (Dot &shot : incoming_shots) {
+					display.draw_dot(shot);
+				}
+			} else {
+				for (Dot &shot : shots_fired) {
+					display.draw_dot(shot);
+				}
+			}
+
+			// Ships killed overlayed
+			for (SHIP &vessel : ships_kiiled) {
+				vessel.draw_destroyed();
+			}				
+		}
+		break;		
+	}
+
+}
+
+
+uint8_t BattleShip::getHitsLeft()
+{
+	uint8_t hitsLeft = 0;
+
+	for (SHIP &vessel : ships) {
+		hitsLeft += vessel.getHitsLeft();
+	}
+
+	return hitsLeft;
+
+/*	
 	// Check each winning combination
 	for (uint8_t i = 0; i < 8; ++i)
 	{
@@ -283,13 +733,15 @@ uint8_t BattleShip::check_winner()
 
 	// No winner yet
 	return 0;
+*/	
 }
 
-void BattleShip::start_game(uint8_t piece)
+void BattleShip::start_game()
 {
-	player_piece = (BoardPiece)piece;
+//	player_piece = (BoardPiece)piece;
 }
 
+/*
 void BattleShip::set_piece(uint8_t piece)
 {
 	if ((host_starts && !is_hosting()) || (!host_starts && is_hosting()))
@@ -302,6 +754,36 @@ void BattleShip::set_piece(uint8_t piece)
 		set_state(GameState::GAME_RUNNING);
 	}
 }
+*/
+void BattleShip::check_end_game()
+{
+	if ( bs_state == BattleShipState::BS_ENDING ) {
+		return;
+	}
+
+	// we have no more ships to sink
+	if ( getHitsLeft() <= 0 ) {
+
+		info_printf("Game Over\n");
+
+		audio_player.play_note(11, 11, 1, 2);
+
+		// TODO : set state to end game .. for now lets just reset
+		change_game_state( BattleShipState::BS_ENDING );
+		return;
+	}
+
+	// Error trapper
+	if ( available_shots.empty() ) {
+		// OMG .. how did we not kill all ships and have no shots ?
+		info_printf("ERROR NO SHOTS AND SHIP HITS %d Left\n", getHitsLeft() );
+
+		// TODO : set state to end game .. for now lets just reset
+		change_game_state( BattleShipState::BS_ENDING );
+		return;
+	}
+
+}
 
 void BattleShip::end_game()
 {
@@ -311,16 +793,21 @@ void BattleShip::end_game()
 void BattleShip::reset_game()
 {
 	// reset all the data so we can start again
-	player_piece = BoardPiece::EMPTY;
+
+	// TODO : clear game stuff 
+
 	host_starts = !host_starts;
-	winner_flash_counter = 10;
-	winning_player = 0;
-	winning_combo = 0;
 	my_turn = false;
-	moves_left = 9;
-	for (int b = 0; b < 9; b++)
-		board[b] = 0;
+
+	// 
 	set_state(GameState::GAME_MENU);
+}
+
+void BattleShip::kill_game()
+{
+	info_printf("Kill game while in %s\n", game_state_names[(uint8_t) get_state() ]);
+
+	change_game_state( BattleShipState::BS_NONE );
 }
 
 void BattleShip::set_state(GameState s)
@@ -337,7 +824,9 @@ void BattleShip::set_state(GameState s)
 
 bool BattleShip::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len)
 {
-	game_data_chunk_t *new_packet = reinterpret_cast<game_data_chunk_t *>((uint8_t *)data);
+	// TODO : make sure its for us ?
+
+	bs_game_data_chunk_t *new_packet = reinterpret_cast<bs_game_data_chunk_t *>((uint8_t *)data);
 
 	info_print("Data: ");
 	for (int i = 0; i < data_len; i++)
@@ -346,7 +835,7 @@ bool BattleShip::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int da
 	}
 
 	info_println();
-
+/*
 	if ((DataType)data[0] == DataType::SEND_MOVE || (DataType)data[0] == DataType::END_GAME)
 	{
 		update_position((uint8_t)data[1], (BoardPiece)(uint8_t)data[2]);
@@ -355,9 +844,125 @@ bool BattleShip::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int da
 	{
 		set_piece((BoardPiece)(uint8_t)data[1]);
 	}
-	
+*/	
 
 	return true;
+}
+
+
+void BattleShip::createRandomBoard()
+{
+	// Clear any previous ships
+	ships.clear();
+
+	// const SHIP FLEET[]
+	
+	noEdgeShips = true;
+	noTouchingShips = true;
+
+	for (const ShipType shipID : FLEET) { 
+
+		// Make functiom ?
+		bool shipAfloat = false;
+		int shipLength = ((int) shipID)-1;		// Length is ENUM ID - 1
+
+		while ( !shipAfloat ) {
+
+			int startX = std::rand() % MATRIX_SIZE;
+			int startY = std::rand() % MATRIX_SIZE;
+
+			int direction = std::rand() % 4;
+			int addX = 0;
+			int addY = 0;
+
+			// Build ship and clamp in 4 directions
+			switch ( std::rand() % 4 ) {
+
+				default:
+					startY -= shipID;
+
+					if ( startY <= 0 ) {
+						startY = (std::rand()&1);
+					}
+
+					addY = 1;
+				break;
+
+				case 1:
+					if ( startX+shipLength >= MATRIX_SIZE ) {
+						startX = MATRIX_SIZE-shipLength-1-(std::rand()&1);
+					}
+					addX = 1;
+				break;
+
+				case 2:
+					if ( startY+shipLength >= MATRIX_SIZE ) {
+						startY = MATRIX_SIZE-shipLength-1-(std::rand()&1);
+					}
+
+					addY = 1;
+				break;
+
+				case 3:
+					startX -= shipLength;
+
+					if ( startX <= 0 ) {
+						startX = (std::rand()&1);
+					}
+
+					addX = 1;
+				break;
+
+			}
+
+			// Bring off edge if not allowed
+			if ( noEdgeShips ) {
+				if ( startX <= 0 ) {
+					startX = 1;
+				} else  if ( startX+shipLength >= MATRIX_SIZE-1 ) {
+					startX = MATRIX_SIZE-shipLength-1;
+				}
+
+				if ( startY <= 0 ) {
+					startY = 1;
+				} else if ( startY+shipLength >= MATRIX_SIZE-1 ) {
+					startY = MATRIX_SIZE-shipLength-1;
+				}
+			}
+		
+			bool touching = false;
+			for (SHIP &vessel : ships) {
+				touching = vessel.lineIntersect( startX, startY, shipLength, addX > addY, noTouchingShips );
+
+				if ( touching ) {
+					break;
+				}
+			}
+
+
+			if ( touching ) {
+				info_printf(" touching ship x: %d, y: %d, len: %d\n", startX, startY, shipLength);
+				continue;
+			}
+
+			info_printf(" ship %d, x: %d, y: %d, len: %d\n",shipID , startX, startY, shipLength);					
+
+			// Create ships to process
+			ships.push_back( SHIP(shipID,shipLength,startX, startY,  addX > addY , display.Color(SHIP_COLOR[shipID][0], SHIP_COLOR[shipID][1], SHIP_COLOR[shipID][2])) );
+
+			shipAfloat = true;
+		}
+	}
+}
+
+void BattleShip::set_hosting(bool state)
+{
+    MultiplayerGame::set_hosting(state);
+
+	info_printf("BattleShip host? %s\n", (state ? "YES" : "NO"));
+
+	// Kill game if running
+	battleShip.kill_game();
 }
 
 SFX BattleShip::get_game_wave_file(const char *wav_name)

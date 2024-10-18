@@ -1,10 +1,35 @@
 #pragma once
 
+#define RGB_COLOR(r,g,b) (uint32_t)((uint16_t)(r & 0xF8) << 8) | ((uint16_t)(g & 0xFC) << 3) | (b >> 3);
+
 #include <map>
 #include "../../audio/audio.h"
 #include "../../frameworks/mp_game.h"
+#include "game_battleship_vessel.h"
 
-enum DataType : uint8_t
+// This could be defined when we add the games to the core
+// then commands only for that ID are sent to that game
+const uint8_t GAME_ID = 0;
+
+enum BattleShipState : uint8_t
+{
+	BS_NONE = 0,
+	BS_BOARD_SETUP = 1,		// Board created 
+	BS_BOARD_READY = 2,		// Pending user to accept board
+	BS_ACTIVE = 3,			// Both boards setup and ready
+	BS_ENDING = 4,			// After winner is announced
+};
+
+static String battleship_state_names[] =
+{
+	"NONE",
+	"BOARD SETUP",
+	"READY",
+	"ACTIVE",
+	"ENDING",
+};
+
+enum BS_DataType : uint8_t
 {
 	WANT_TO_PLAY = 0,
 	SETUP_BOARD = 1, 
@@ -16,39 +41,33 @@ enum DataType : uint8_t
 	// ** Select first then select area to move top or left most section
 
 	SEND_MOVE = 2, // More user fire at square
-	END_GAME = 3,
+	SEND_DESTROYED_SHIP = 3,
+
+	// 
+	SEND_ALIVE_SHIP = 4,
+
+	END_GAME = 5,
 };
 
-enum BoardPiece : uint8_t
+struct bs_game_data_t
 {
-	EMPTY = 0,
-	SUBMARINE = 1,	// 2x 
-	DESTROYER = 2,	// 2x
-	CRUISER = 3,	// 1x
-	BATTLESHIP = 4,	// 1x
-	AIRCRAFT = 5,	// 1x
-	MISS = 6,
-	HIT = 128,		// Mask to find hit ship and check if destroyed etc
-};
-
-
-// TODO : make this local only , need a dynamic way to send data
-struct game_data_t
-{
-		uint8_t dtype;
-		uint8_t data0;
-		uint8_t data1;
+	uint8_t gtype;		// Future Core will define this based on registration 
+	uint8_t dtype;
+	uint8_t data_x;		// X - fire or ship start
+	uint8_t data_y;		// Y - fire or ship start
+	uint8_t data_id;	// ID - ship id , 0 means fire 
+	uint8_t data_misc;	// direction - only used if ship
 };
 
 typedef union
 {
-		struct
-		{
-				game_data_t data;
-		} __attribute__((packed));
+	struct
+	{
+		bs_game_data_t data;
+	} __attribute__((packed));
 
-		uint8_t raw[sizeof(game_data_t)];
-} game_data_chunk_t;
+	uint8_t raw[sizeof(bs_game_data_t)];
+} bs_game_data_chunk_t;
 
 class BattleShip : public MultiplayerGame
 {
@@ -58,71 +77,63 @@ class BattleShip : public MultiplayerGame
 			game = nullptr;		
 		}
 
-		bool set_position(uint8_t position, uint8_t piece);
 
-		uint8_t check_winner();
-		void send_data(DataType type, uint8_t data0, uint8_t data1);
-
-		//
-		void start_game(uint8_t piece) override;
-		void reset_game() override;
-		void end_game() override;
-
-		void set_state(GameState s) override;
+		// Core overrides ?
+		void set_state(GameState s) override;		
 	   	void display_game() override;
 		bool touched_board(uint8_t x, uint8_t y) override;
+    	void update_loop() override;
+		void kill_game() override;
+		void set_hosting(bool state) override;
 
-		void update_position(uint8_t position, uint8_t piece) override;
-		void set_piece(uint8_t piece) override;
+
 		bool onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len) override;
 		SFX get_game_wave_file(const char *wav_name) override;
 
+	private:
+		// anim vars for pre connected , might make this a demo mode
 		int16_t waiting_radius[2] = {0, 0};
 		uint16_t wait_period = 150;
 
-	private:
-		std::map<const char *, SFX> game_wav_files;
-
-		BoardPiece ships[MATRIX_SIZE][MATRIX_SIZE] = {EMPTY};
-		BoardPiece shots[MATRIX_SIZE][MATRIX_SIZE] = {EMPTY};
-
-		uint8_t board[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
-		uint8_t pos_fader[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
-		uint8_t piece_pos_x[9] = {0, 4, 8, 0, 4, 8, 0, 4, 8};
-		uint8_t piece_pos_y[9] = {0, 0, 0, 4, 4, 4, 8, 8, 8};
-		uint8_t winning_player = 0;
-		uint8_t winner_flash_counter = 10;
-		uint8_t winning_combo = 255;
-
-		uint8_t moves_left = 9;
-
 		unsigned long next_display_update = 0;
 
-		bool flashing_winner = false;
-		BoardPiece player_piece = BoardPiece::EMPTY;
 		bool my_turn = false;
 		bool host_starts = true;
 
-		// Winning combinations
-		const uint8_t winning_combinations[8][3] = {
-			{0, 1, 2}, // Row 1
-			{3, 4, 5}, // Row 2
-			{6, 7, 8}, // Row 3
-			{0, 3, 6}, // Column 1
-			{1, 4, 7}, // Column 2
-			{2, 5, 8}, // Column 3
-			{0, 4, 8}, // Diagonal 1
-			{2, 4, 6}  // Diagonal 2
-		};
+		bool noEdgeShips = true;		// Ships are not allowed on edge if true
+		bool noTouchingShips = true;	// Ships cant touch if true
 
-		const uint8_t winning_centers[8][4] = {
-			{1, 1, 9, 1}, // Row 1
-			{1, 5, 9, 5}, // Row 2
-			{1, 9, 9, 9}, // Row 3
-			{1, 1, 1, 9}, // Column 1
-			{5, 1, 5, 9}, // Column 2
-			{9, 1, 9, 9}, // Column 3
-			{1, 1, 9, 9}, // Diagonal 1
-			{9, 1, 1, 9}  // Diagonal 2
-		};
+		std::vector<Point> lastTouch;
+
+		std::map<const char *, SFX> game_wav_files;
+		BattleShipState bs_state = BattleShipState::BS_NONE;
+
+		// Player board info
+		std::vector<SHIP> ships;
+		std::vector<Dot> incoming_shots;
+
+		// Enemy board info
+		std::vector<Dot> shots_fired;
+		std::vector<SHIP> ships_kiiled;
+		std::vector<SHIP> ships_survied;
+
+		void start_game();
+		void reset_game();
+		void end_game();	
+		uint8_t getHitsLeft();
+
+		void send_data(BS_DataType _type, uint8_t _x, uint8_t _y, uint8_t _id, uint8_t _misc);
+
+		// Debounce for no touch process , move to touch process to handle release
+		int lastPressedTime = 0;
+		void processLastTouch(uint8_t x, uint8_t y);
+		
+		//
+		void renderGameBoard(bool demoMode);
+		void change_game_state(BattleShipState s);
+		void createRandomBoard();
+		void check_end_game();
+
+		// Kinda AI ish thinking 
+		std::vector<Dot> available_shots;
 };
