@@ -1,9 +1,5 @@
 #pragma once
 
-#include <map>
-#include "../../audio/audio.h"
-#include "../../frameworks/mp_game.h"
-
 enum ShipType : uint8_t
 {
 	EMPTY = 0,
@@ -227,6 +223,4 @@ public:
 			// (doesnt check for over hit , so call must know this square was not used before)
 			return --hits;
 		}
-
-
 };

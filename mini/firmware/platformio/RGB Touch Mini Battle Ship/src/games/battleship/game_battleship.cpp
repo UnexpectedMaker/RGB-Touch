@@ -23,14 +23,10 @@ audio_player.play_note(0, 0, 1.0, 1);
 
 #include "audio/voice/voice_miss.h"
 #include "audio/voice/voice_hit.h"
-
+#include "audio/voice/gameover.h"
 
 BattleShip battleShip;	// Create instance , so we can notify core
 
-// Temp vars for now
-const int DEBONCE = 100;	// 1/10 of a second 
-int tempLastms = 0;
-uint8_t game_over_counter = 0;
 
 BattleShip::BattleShip()
 {
@@ -41,6 +37,7 @@ BattleShip::BattleShip()
 	game_wav_files = {
 		{"miss", SFX(voice_miss, sizeof(voice_miss))},
 		{"hit", SFX(voice_hit, sizeof(voice_hit))},
+		{"gameover", SFX(gameover, sizeof(gameover))},
 	};
 
 	// Seed rand with deviceID , this should produce differed rands on different devices
@@ -110,14 +107,19 @@ void BattleShip::change_game_state(BattleShipState s)
 		{
 			// Make function
 			{
-				ships.clear();
+				players_ready = 0;
 
-				battleShip.createRandomBoard();
+				ai_level = ( std::rand() % 3 ) + 1;
 
 				// Clear game data before we start a battle
+				ships.clear();
 				shots_fired.clear();
 				incoming_shots.clear();
 				ships_kiiled.clear();
+
+				info_printf("create_random_board AI[%d] Board\n", ai_level);
+
+				battleShip.create_random_board();
 			}
 
 			// AI Tester - move to Class 
@@ -134,11 +136,12 @@ void BattleShip::change_game_state(BattleShipState s)
 					}
 				}
 
-				// Lets Randomize the possible shots list
-				for (u_int i = 0; i < available_shots.size()-1; i++)
-				{
-					int target = i + 1 + rand() % (available_shots.size() - i - 1);
-					std::swap( available_shots[i], available_shots[target] );
+				// Lets Randomize the possible shots list - Make this based on AI Level
+				for (u_int l = 0; l < ai_level; l++) {
+					for (u_int i = 0; i < available_shots.size()-1; i++) {
+						int target = i + 1 + rand() % (available_shots.size() - i - 1);
+						std::swap( available_shots[i], available_shots[target] );
+					}
 				}
 			}
 
@@ -147,6 +150,10 @@ void BattleShip::change_game_state(BattleShipState s)
 			{
 				set_state(GameState::GAME_MENU);
 				bs_state = BattleShipState::BS_BOARD_READY;
+
+				// Setup temp to be our counter before we lock the board
+				tempLastms = millis();
+				tempCounter = MATRIX_SIZE;
 			}
 			else 
 			{
@@ -156,21 +163,27 @@ void BattleShip::change_game_state(BattleShipState s)
 		}
 		break;
 
+		case BattleShipState::BS_AWAITING_ENEMY:
+			set_state(GameState::GAME_RUNNING);
+		break;
+
 		case BattleShipState::BS_ENDING:
 		{
+			audio_player.play_wav_queue("gameover");
+
 			tempLastms = millis();
-			game_over_counter = 10;
+			tempCounter = 10;
 		}
 		break;
 
 	}
 }
 
-void BattleShip::processLastTouch(uint8_t x, uint8_t y)
+void BattleShip::process_last_touch(uint8_t x, uint8_t y)
 {
 	if (get_state() == GameState::GAME_MENU)
 	{
-		info_printf("processLastTouch Game State: %s\n", game_state_names[(uint8_t)get_state()]);
+		info_printf("process_last_touch Game State: %s\n", game_state_names[(uint8_t)get_state()]);
 
 		if ((host_starts && is_hosting()) || (!host_starts && !is_hosting()))
 		{
@@ -183,6 +196,8 @@ void BattleShip::processLastTouch(uint8_t x, uint8_t y)
 				}
 				break;
 			}
+
+//			BS_ACTIVE and not demo ?
 
 /*
 			if (player_piece == BoardPiece::EMPTY)
@@ -206,9 +221,9 @@ void BattleShip::processLastTouch(uint8_t x, uint8_t y)
 		}
 	} else if (get_state() == GameState::GAME_RUNNING) {
 
-		info_printf("GAME TOUCH ACTIVE x: %d, y: %d - %s\n", x, y , battleship_state_names[(uint8_t)bs_state]);
-
 		if ( bs_state == BattleShipState::BS_ACTIVE ) {
+
+			info_printf("GAME TOUCH ACTIVE x: %d, y: %d - %s\n", x, y , battleship_state_names[(uint8_t)bs_state]);
 
 			if ( my_turn ) {
 
@@ -220,8 +235,6 @@ void BattleShip::processLastTouch(uint8_t x, uint8_t y)
 			// TODO : play error
 		}
 	}
-
-
 }
 /*
 bool BattleShip::set_position(uint8_t position, uint8_t piece)
@@ -297,7 +310,7 @@ void BattleShip::update_loop()
 		// Debounce .. we should move this into touch to get an up / down function
 		if ( millis() - lastPressedTime >= DEBONCE ) 
 		{
-			battleShip.processLastTouch(lastTouch[0].x, lastTouch[0].y);
+			battleShip.process_last_touch(lastTouch[0].x, lastTouch[0].y);
 			lastTouch.clear();
 		}
 	}
@@ -325,6 +338,8 @@ void BattleShip::update_loop()
 		// Waiting is Demo Mode for now
 		if ( bs_state == BattleShipState::BS_ACTIVE ) {
 
+			// TODO : move this to its own AI class
+
 			// 1/2 a Second fire rate
 			if ( millis() - tempLastms >= 500 ) {
 				tempLastms = millis();
@@ -338,7 +353,7 @@ void BattleShip::update_loop()
 				if ( shot.color != KILL_COLOR && !shots_fired.empty() ) 
 				{
 					// Cycle last "X" to detect if one was a hit with open neighours
-					int aiLevel = (5*3); // Look back 5 * ai level (easy/meduim/hard)
+					int aiLevel = (AI_LOOK_BACK*ai_level);
 					int lookBackTo = constrain( (int) shots_fired.size()-aiLevel, 0, shots_fired.size() - 1);
 
 //					info_printf("Look back : %d from %d\n", lookBackTo , shots_fired.size()-1 );
@@ -394,7 +409,7 @@ void BattleShip::update_loop()
 
 						// If no connectors next look back
 						if ( connectedIndex.size() <= 0 ) {
-							info_printf("No Neightbour\n" );
+//							info_printf("No Neightbour\n" );
 							continue;
 						}
 
@@ -464,6 +479,10 @@ void BattleShip::update_loop()
 		}
 
 
+	} else if (get_state() == GameState::GAME_RUNNING) {
+
+
+
 	} 
 	
 	{
@@ -480,7 +499,26 @@ void BattleShip::update_loop()
 	switch (bs_state) {
 
 		case BattleShipState::BS_BOARD_SETUP:
+		break;
+
 		case BattleShipState::BS_BOARD_READY:
+			
+			// Count X every second till we 
+			if ( millis() - tempLastms >= 1000 ) 
+			{
+				tempLastms = millis();
+
+				tempCounter--;
+
+				if ( tempCounter == 0 ) {
+					info_printf("Board applied \n");
+					change_game_state( BattleShipState::BS_AWAITING_ENEMY );
+				}
+			}
+		break;
+
+		case BattleShipState::BS_AWAITING_ENEMY:
+			// TODO : waiting on enemy to be ready 
 		break;
 
 		case BattleShipState::BS_ACTIVE:
@@ -500,9 +538,9 @@ void BattleShip::update_loop()
 			{
 				tempLastms = millis();
 
-				game_over_counter--;
+				tempCounter--;
 
-				if ( game_over_counter == 0 ) {
+				if ( tempCounter == 0 ) {
 					info_printf("Game Over to new board\n");
 					change_game_state( BattleShipState::BS_NONE );
 				}
@@ -525,7 +563,7 @@ void BattleShip::display_game()
 		}
 
 		//
-		renderGameBoard(true);
+		render_game_board(true);
 
 /*		
 		// TODO ? Change ?
@@ -563,11 +601,17 @@ void BattleShip::display_game()
 	else if (get_state() == GameState::GAME_MENU)
 	{
 		// 
-		renderGameBoard(false);
+		render_game_board(false);
+
+		if ( bs_state == BattleShipState::BS_BOARD_READY ) {
+			display.draw_line(0,MATRIX_SIZE-1,tempCounter-1,MATRIX_SIZE-1, display.Color(128, 0, 0) );
+		}
+
 	}
 	else if (get_state() == GameState::GAME_RUNNING)
 	{
-		renderGameBoard(false);
+		render_game_board(false);
+		
 /*
 		for (uint8_t i = 0; i < 9; i++)
 		{
@@ -627,7 +671,7 @@ void BattleShip::display_game()
 	}
 }
 
-void BattleShip::renderGameBoard(bool demoMode)
+void BattleShip::render_game_board(bool demoMode)
 {
 	display.clear();
 
@@ -635,6 +679,7 @@ void BattleShip::renderGameBoard(bool demoMode)
 
 		case BattleShipState::BS_BOARD_SETUP:
 		case BattleShipState::BS_BOARD_READY:
+		case BattleShipState::BS_AWAITING_ENEMY:
 		{
 			// Draw ships always
 			for (SHIP &vessel : ships) {
@@ -859,14 +904,12 @@ bool BattleShip::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int da
 }
 
 
-void BattleShip::createRandomBoard()
+void BattleShip::create_random_board()
 {
 	// Clear any previous ships
 	ships.clear();
 
-	// const SHIP FLEET[]
-	
-	noEdgeShips = true;
+	noEdgeShips = !noEdgeShips;	// For now lets toggle to make it interesting
 	noTouchingShips = true;
 
 	for (const ShipType shipID : FLEET) { 
@@ -893,12 +936,12 @@ void BattleShip::createRandomBoard()
 				break;
 
 				case 1:
-					startX = constrain(startX+shipLength, 0, MATRIX_SIZE-1-(std::rand()&1));
+					startX = constrain(startX+shipLength, 0, MATRIX_SIZE-shipLength-1-(std::rand()&1));
 					addX = 1;
 				break;
 
 				case 2:
-					startY = constrain(startY+shipLength, 0, MATRIX_SIZE-1-(std::rand()&1));
+					startY = constrain(startY+shipLength, 0, MATRIX_SIZE-shipLength-1-(std::rand()&1));
 					addY = 1;
 				break;
 
@@ -909,7 +952,7 @@ void BattleShip::createRandomBoard()
 
 			}
 
-			// no Edge , keep any part of the ship out of the edges
+			// no Edge , keep ends of ship inside edge
 			if ( noEdgeShips ) {			
 				startX = constrain(startX, 1, MATRIX_SIZE-shipLength-2);
 				startY = constrain(startY, 1, MATRIX_SIZE-shipLength-2);

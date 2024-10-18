@@ -15,13 +15,18 @@ const uint16_t SHOT_COLOR = RGB_COLOR(0x7F,0x7F,0x7F);
 const uint16_t HIT_COLOR = RGB_COLOR(0xCF,0x00,0x00);
 const uint16_t KILL_COLOR = RGB_COLOR(0xFF,0x00,0x00);
 
+const int DEBONCE = 100;	// 1/10 of a second 
+
+const int AI_LOOK_BACK = 5;	// Look back 5 * ai level (easy/meduim/hard)
+
 enum BattleShipState : uint8_t
 {
 	BS_NONE = 0,
 	BS_BOARD_SETUP = 1,		// Board created 
 	BS_BOARD_READY = 2,		// Pending user to accept board
-	BS_ACTIVE = 3,			// Both boards setup and ready
-	BS_ENDING = 4,			// After winner is announced
+	BS_AWAITING_ENEMY = 3,	// Board accepted, waiting on other player
+	BS_ACTIVE = 4,			// Both boards setup and ready
+	BS_ENDING = 5,			// After winner is announced
 };
 
 static String battleship_state_names[] =
@@ -29,6 +34,7 @@ static String battleship_state_names[] =
 	"NONE",
 	"BOARD SETUP",
 	"READY",
+	"AWAITING",
 	"ACTIVE",
 	"ENDING",
 };
@@ -81,7 +87,6 @@ class BattleShip : public MultiplayerGame
 			game = nullptr;		
 		}
 
-
 		// Core overrides ?
 		void set_state(GameState s) override;		
 	   	void display_game() override;
@@ -90,22 +95,22 @@ class BattleShip : public MultiplayerGame
 		void kill_game() override;
 		void set_hosting(bool state) override;
 
-
 		bool onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len) override;
 		SFX get_game_wave_file(const char *wav_name) override;
 
 	private:
 		// anim vars for pre connected , might make this a demo mode
-		int16_t waiting_radius[2] = {0, 0};
-		uint16_t wait_period = 150;
+//		int16_t waiting_radius[2] = {0, 0};
+//		uint16_t wait_period = 150;
 
 		unsigned long next_display_update = 0;
 
 		bool my_turn = false;
 		bool host_starts = true;
+		uint8_t players_ready = 0;		// 
 
-		bool noEdgeShips = true;		// Ships are not allowed on edge if true
-		bool noTouchingShips = true;	// Ships cant touch if true
+		bool noEdgeShips = false;		// Ships are not allowed on edge if true, toggle on board create
+		bool noTouchingShips = false;	// Ships cant touch if true
 
 		std::vector<Point> lastTouch;
 
@@ -121,23 +126,28 @@ class BattleShip : public MultiplayerGame
 		std::vector<SHIP> ships_kiiled;
 		std::vector<SHIP> ships_survied;
 
+		// Temp vars for now
+		int tempLastms = 0;
+		uint8_t tempCounter = 0;
+
+		// 
 		void start_game();
 		void reset_game();
 		void end_game();	
 		uint8_t getHitsLeft();
-
 		void send_data(BS_DataType _type, uint8_t _x, uint8_t _y, uint8_t _id, uint8_t _misc);
 
 		// Debounce for no touch process , move to touch process to handle release
 		int lastPressedTime = 0;
-		void processLastTouch(uint8_t x, uint8_t y);
+		void process_last_touch(uint8_t x, uint8_t y);
 		
 		//
-		void renderGameBoard(bool demoMode);
+		void render_game_board(bool demoMode);
 		void change_game_state(BattleShipState s);
-		void createRandomBoard();
+		void create_random_board();
 		void check_end_game();
 
 		// Kinda AI ish thinking 
+		int ai_level = 3;
 		std::vector<Dot> available_shots;
 };
