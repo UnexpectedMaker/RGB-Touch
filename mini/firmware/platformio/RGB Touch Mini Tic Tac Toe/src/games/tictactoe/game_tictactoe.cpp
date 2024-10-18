@@ -12,7 +12,7 @@
 #include "game_tictactoe.h"
 #include "audio/voice/voice_tic_tac_toe.h"
 
-//TicTacToe ticTacToe;	// Create instance , so we can notify core
+TicTacToe ticTacToe;	// Create instance 
 
 TicTacToe::TicTacToe()
 {
@@ -327,6 +327,14 @@ void TicTacToe::kill_game()
 	info_printf("Kill game while in %s\n", game_state_names[(uint8_t) get_state() ]);
 }
 
+void TicTacToe::set_hosting(bool state)
+{
+	MultiplayerGame::set_hosting(state);
+
+	// Play sound on game state change
+	audio_player.play_wav("tictactoe");
+}
+
 void TicTacToe::set_state(GameState s)
 {
 	info_printf("New State will be: %s\n", game_state_names[(uint8_t)s]);
@@ -342,7 +350,7 @@ void TicTacToe::set_state(GameState s)
 bool TicTacToe::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len)
 {
 	// not for us , this needs to be updated to check data for a specific Key
-	if (data_len != 3) {
+	if (data_len != sizeof(ttt_game_data_t) ) {
 		return false;
 	}
 
@@ -363,8 +371,7 @@ bool TicTacToe::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int dat
 	else 
 	{
 		set_piece((BoardPiece)(uint8_t)data[1]);
-	}
-	
+	}	
 
 	return true;
 }

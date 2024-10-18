@@ -150,6 +150,8 @@ class AudioClass
 			1864.66,
 			1975.53
 		};
+
+		void find_game_wav(const char *wav_name);
 };
 
 extern AudioClass audio_player;

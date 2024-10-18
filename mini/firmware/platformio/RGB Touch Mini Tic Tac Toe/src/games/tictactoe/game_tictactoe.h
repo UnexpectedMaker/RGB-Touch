@@ -48,6 +48,9 @@ class TicTacToe : public MultiplayerGame
 		uint8_t check_winner();
 		void send_data(TTT_DataType type, uint8_t data0, uint8_t data1);
 
+		// Override 
+		void set_hosting(bool state) override;
+
 		// Virtual functions override 
 		void set_state(GameState s) override;
 	   	void display_game() override;
