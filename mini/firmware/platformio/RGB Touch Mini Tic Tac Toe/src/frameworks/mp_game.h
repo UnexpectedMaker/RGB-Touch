@@ -38,6 +38,7 @@ enum GameState : uint8_t
 static String game_state_names[] =
 {
 		"SELECT",
+		"DEMO",
 		"PLAYERS",
 		"OPTIONS",
 		"WAITING",
