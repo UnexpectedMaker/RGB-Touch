@@ -15,9 +15,10 @@ const uint16_t SHOT_COLOR = RGB_COLOR(0x7F,0x7F,0x7F);
 const uint16_t HIT_COLOR = RGB_COLOR(0xCF,0x00,0x00);
 const uint16_t KILL_COLOR = RGB_COLOR(0xFF,0x00,0x00);
 
-const int DEBONCE = 100;	// 1/10 of a second 
+const int DEBONCE = 100;					// 1/10 of a second 
 const int MS_SECOND = 1000;	
-const int AI_LOOK_BACK = 5;	// Look back 5 * ai level (easy/meduim/hard)
+const int AI_LOOK_BACK = 5;					// Look back 5 * ai level (easy/meduim/hard)
+const int MAX_TIMEOUT = (15*MS_SECOND);		// 15 seconds , if we dont get a play or battle we will re-cycle
 
 const ShipType FLEET[] = {	// Reverse to give bigger ships a chance
 	AIRCRAFT,
@@ -158,6 +159,7 @@ class BattleShip : public MultiplayerGame
 		int animLastms = 0;
 		int animCounter = 0;
 		Dot shotResults;
+		int nextTimeout = 0;
 
 		// Temp vars 
 		int tempLastms = 0;
@@ -187,6 +189,8 @@ class BattleShip : public MultiplayerGame
 		bool check_end_game();
 		void end_turn();
 		SHIP* CheckShipHit(int x , int y, bool splash);
+		void set_timeout(bool reset);
+		void timeout_game();
 
 
 		// Kinda AI ish thinking 

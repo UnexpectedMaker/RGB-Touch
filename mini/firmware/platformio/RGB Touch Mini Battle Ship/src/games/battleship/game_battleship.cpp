@@ -5,9 +5,13 @@
 
 * TODO
 
+Last Packet Sent to: F0:9E:9E:31:EE:D0 | Status: Delivery Fail
+This should remove the peer 
+
 Boot up sometimes doesnt sync
 * screen is blakc
 
+Pause game while in menu
 
 Network 
 Peer Join - retain ID 
@@ -33,7 +37,6 @@ Peer lost
 
 BattleShip battleShip;	// Create instance , so we can notify core
 
-
 BattleShip::BattleShip()
 {
 	// TODO : Core to have multi game options
@@ -45,7 +48,7 @@ BattleShip::BattleShip()
 //		{"hit", SFX(voice_hit, sizeof(voice_hit))},
 //		{"kill", SFX(voice_kill, sizeof(voice_kill))},
 		{"gameover", SFX(gameover, sizeof(gameover))},
-		{"battleship", SFX(gameover, sizeof(gameover))},
+		{"battleship", SFX(battleship, sizeof(battleship))},
 	};
 
 	// Seed rand with deviceID , this should produce differed rands on different devices
@@ -91,13 +94,16 @@ bool BattleShip::touched_board(uint8_t x, uint8_t y)
 // Change state , logic and clear
 void BattleShip::change_game_state(BattleShipState new_state)
 {
-//	info_printf("change_game_state FROM : %s\n", battleship_state_names[(uint8_t)bs_state]);
-//	info_printf("change_game_state State: %s\n", game_state_names[(uint8_t)get_state()]);
+	info_printf("change_game_state FROM : %s\n", battleship_state_names[(uint8_t)bs_state]);
+	info_printf("change_game_state State: %s\n", game_state_names[(uint8_t)get_state()]);
 
 	if ( bs_state == new_state ) {
 		info_printf(" ERROR ALREADY on Battle State : %s\n", battleship_state_names[(uint8_t)bs_state]);
 		return;
 	}
+
+	// Always clear timeout on state change
+	set_timeout(true);
 
 //	esp_backtrace_print(2);
 
@@ -108,6 +114,8 @@ void BattleShip::change_game_state(BattleShipState new_state)
 		{
 			my_turn = false;
 			players_ready = false;
+
+			set_state(GameState::GAME_WAITING);
 		}
 		break;
 
@@ -172,10 +180,8 @@ void BattleShip::change_game_state(BattleShipState new_state)
 				send_data(BS_DataType::WAITING_TO_PLAY,(host_starts<<1)|(is_hosting()),0,0,0);
 				info_printf("SEND WAITING_TO_PLAY %d , starts %d \n", is_hosting(), host_starts);
 			}
-		break;
 
-		case BattleShipState::BS_ACTIVE:
-
+			set_timeout(false);
 		break;
 
 		case BattleShipState::BS_SHOOTING:
@@ -192,6 +198,8 @@ void BattleShip::change_game_state(BattleShipState new_state)
 			}
 
 			info_printf("BS_SHOOTING: %d %d\n", animCounter, animLastms);
+
+			set_timeout(false);
 		}
 		break;
 
@@ -209,6 +217,8 @@ void BattleShip::change_game_state(BattleShipState new_state)
 			}
 
 			info_printf("BS_MISS: %d %d\n", animCounter, animLastms);
+
+			set_timeout(false);
 		}
 		break;
 
@@ -226,6 +236,8 @@ void BattleShip::change_game_state(BattleShipState new_state)
 			}
 
 			info_printf("BS_HIT: %d %d\n", animCounter, animLastms);
+
+			set_timeout(false);
 		}
 		break;
 
@@ -243,6 +255,8 @@ void BattleShip::change_game_state(BattleShipState new_state)
 			}
 
 			info_printf("BS_DESTROYED: %d %d\n", animCounter, animLastms);
+
+			set_timeout(false);
 		}
 		break;
 
@@ -276,7 +290,7 @@ void BattleShip::change_game_state(BattleShipState new_state)
 	}
 
 	bs_state = new_state;
-//	info_printf("change_game_state State TO : %s\n", battleship_state_names[(uint8_t)bs_state]);
+	info_printf("change_game_state State TO : %s\n", battleship_state_names[(uint8_t)bs_state]);
 //  info_printf("change_game_state State: %s\n", game_state_names[(uint8_t)get_state()]);
 }
 
@@ -613,6 +627,17 @@ void BattleShip::update_loop()
 	} else if (get_state() == GameState::GAME_RUNNING) {
 
 
+		// Lets handle no responses in a suitable time
+		if ( nextTimeout > 0 && millis() >= nextTimeout ) {
+
+			timeout_game();
+
+			info_printf("GAME_RUNNING TIMEOUT REACH\n");
+
+			return;
+		}
+
+
 
 	} 
 
@@ -833,8 +858,6 @@ void BattleShip::update_board_state()
 
 		case BattleShipState::BS_ENDING:
 		{
-			info_printf("BS_ENDING: %d %d\n", animCounter, animLastms);
-
 			// TODO : some form of animation
 			if ( millis() - animLastms >= MS_SECOND ) 
 			{
@@ -848,7 +871,6 @@ void BattleShip::update_board_state()
 					info_printf("Game Over reset state\n");
 
 					change_game_state( BattleShipState::BS_NONE );
-					set_state(GameState::GAME_WAITING);
 				}
 			}
 		}
@@ -978,16 +1000,12 @@ void BattleShip::render_game_board()
 		{
 			render_active_board(demoMode);
 
-			Dot d = shots_fired[shots_fired.size()-1];
-
 		}
 		break;
 
 		case BattleShipState::BS_HIT:
 		{
 			render_active_board(demoMode);
-
-			Dot d = shots_fired[shots_fired.size()-1];
 
 		}
 		break;
@@ -1461,6 +1479,24 @@ void BattleShip::create_random_board()
 			shipAfloat = true;
 		}
 	}
+}
+
+
+void BattleShip::timeout_game()
+{
+	// Kill peers ?
+
+	end_game();
+
+	set_state(GameState::GAME_MENU);
+	change_game_state( BattleShipState::BS_NONE );
+}
+
+void BattleShip::set_timeout(bool reset)
+{
+	nextTimeout = reset ? 0 : millis()+MAX_TIMEOUT;
+
+	info_printf("set_timeout %d\n", nextTimeout);
 }
 
 void BattleShip::set_hosting(bool state)
