@@ -5,13 +5,13 @@
 
 * TODO
 
+Boot up sometimes doesnt sync
+* screen is blakc
+
+
 Network 
 Peer Join - retain ID 
 Peer lost 
-
-audio_player.play_note(6, 11, 1.0, 1);
-audio_player.play_note(11, 11, 1.0, 1);
-audio_player.play_note(0, 0, 1.0, 1);
 
  */
 
@@ -1396,10 +1396,13 @@ void BattleShip::create_random_board()
 		bool shipAfloat = false;
 		int shipLength = ((int) shipID)-1;		// Length is ENUM ID - 1
 
+		info_printf(" Trying ship[%d] len: %d\n",shipID, shipLength);
+
 		while ( !shipAfloat ) {
 
 			int startX = std::rand() % MATRIX_SIZE;
 			int startY = std::rand() % MATRIX_SIZE;
+
 
 			int direction = std::rand() % 4;
 			int addX = 0;

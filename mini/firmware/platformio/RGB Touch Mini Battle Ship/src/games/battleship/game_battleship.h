@@ -20,12 +20,12 @@ const int MS_SECOND = 1000;
 const int AI_LOOK_BACK = 5;	// Look back 5 * ai level (easy/meduim/hard)
 
 const ShipType FLEET[] = {	// Reverse to give bigger ships a chance
-//	AIRCRAFT,
-//	BATTLESHIP,
+	AIRCRAFT,
+	BATTLESHIP,
 	CRUISER,
-//	DESTROYER, 
-//	DESTROYER,
-//	SUBMARINE,
+	DESTROYER, 
+	DESTROYER,
+	SUBMARINE,
 	SUBMARINE,
 };
 
