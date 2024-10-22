@@ -32,6 +32,16 @@ static const uint8_t isinTable8[] = {
 	// clang-format on
 };
 
+struct Dot
+{
+		int x;
+		int y;
+		uint16_t color = 0;
+
+		Dot(int _x, int _y, uint16_t _col) : x(_x), y(_y), color(_col) {}
+		Dot() : x(0), y(0), color(0) {}
+};
+
 struct ICON
 {
 		std::vector<const uint16_t *> frames;
@@ -99,6 +109,8 @@ class MatrixDisplay
 		// Drawing routines
 		void fade_leds_to(uint8_t val);
 		void fill_screen(uint8_t r, uint8_t g, uint8_t b);
+		void draw_dot(Dot p);
+		void draw_single(uint8_t x, uint8_t y, uint32_t col);
 		void draw_line(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, uint32_t col);
 		void draw_circle(uint8_t x, uint8_t y, uint8_t r, uint32_t col);
 		void draw_arc(int16_t x, int16_t y, int16_t r, int16_t rs, int16_t re, uint16_t color);

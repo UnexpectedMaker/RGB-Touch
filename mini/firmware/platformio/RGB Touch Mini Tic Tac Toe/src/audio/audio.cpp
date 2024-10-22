@@ -1,5 +1,6 @@
 #include "audio/audio.h"
 #include "WiFi.h"
+#include "frameworks/mp_game.h"
 
 float hhz = 440;
 float tm = 1.0;
@@ -181,13 +182,35 @@ void AudioClass::set_volume(uint8_t vol)
 	out->SetGain((float)vol / max_volume);
 }
 
+void AudioClass::find_game_wav(const char *wav_name)
+{
+	if ( !game )
+		return;
+
+	// If we have a game , lets ask it first for wav data
+	SFX game_wav = game->get_game_wave_file(wav_name);
+	if ( game_wav.array && game_wav.size > 0 )  {
+		// We just set class var with data if found
+		file = new AudioFileSourcePROGMEM(game_wav.array, game_wav.size);
+	}
+}
+
 void AudioClass::play_wav(const char *wav_name, bool force)
 {
 	if (settings.config.volume == 0)
 		return;
 
-	file = new AudioFileSourcePROGMEM(wav_files[wav_name].array, wav_files[wav_name].size);
-	wav->begin(file, out);
+	find_game_wav(wav_name);
+
+	if ( !file ) {
+		file = new AudioFileSourcePROGMEM(wav_files[wav_name].array, wav_files[wav_name].size);
+	}
+
+	if ( file ) {
+		wav->begin(file, out);
+	} else {
+		info_printf("play_wav[%s] Not Found\n",wav_name);
+	}
 }
 
 void AudioClass::play_wav_queue(const char *wav_name)
@@ -203,8 +226,19 @@ void AudioClass::play_wav_queue(const char *wav_name)
 	else
 	{
 		info_printf("loading %s to queue\n", wav_name);
-		file = new AudioFileSourcePROGMEM(wav_files[wav_name].array, wav_files[wav_name].size);
-		wav->begin(file, out);
+
+		find_game_wav(wav_name);
+
+		if ( !file ) {
+			file = new AudioFileSourcePROGMEM(wav_files[wav_name].array, wav_files[wav_name].size);
+		}
+
+
+		if ( file ) {
+			wav->begin(file, out);
+		} else {
+			info_printf("play_wav_queue[%s] Not Found\n",wav_name);
+		}
 	}
 }
 

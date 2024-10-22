@@ -3,7 +3,7 @@
 #include "audio/audio.h"
 #include "web/wifi_controller.h"
 
-#include "frameworks/game_tictactoe.h"
+#include "frameworks/mp_game.h"
 
 extern Adafruit_LIS3DH lis;
 
@@ -183,13 +183,20 @@ void MatrixDisplay::update()
 {
 	if (rgbtouch.check_mode(Modes::FUN))
 	{
+		if ( game == nullptr ) {
+
+			// TODO : Force game to end , drop peer etc 
+			// DROP out of FUN mode
+			return;
+		}
+
 		if (rgbtouch.check_play_mode(PlayModes::PLAY))
 		{
 			if (millis() - next_redraw > 25)
 			{
 				next_redraw = millis();
-
-				game.display_game();
+		
+				game->display_game();
 
 				_matrix->show();
 			}
@@ -266,6 +273,17 @@ void MatrixDisplay::fade_leds_to(uint8_t val)
 {
 	fadeToBlackBy(leds, NUM_LEDS, val);
 }
+
+void MatrixDisplay::draw_dot(Dot p)
+{
+	_matrix->writePixel(p.x, p.y, p.color);
+}
+
+void MatrixDisplay::draw_single(uint8_t x, uint8_t y, uint32_t col)
+{
+	_matrix->writePixel(x, y, col);
+}
+
 void MatrixDisplay::draw_line(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, uint32_t col)
 {
 	_matrix->drawLine(x0, y0, x1, y1, col);

@@ -9,9 +9,16 @@
 #include <vector>
 
 #include "utilities/logging.h"
-#include "frameworks/game_tictactoe.h"
+#include "frameworks/mp_game.h"
 
 #define DEFAULT_PORT 5568
+
+// Improved macro for getting array size with constexpr to allow compile-time evaluation
+template <typename T, std::size_t N>
+constexpr std::size_t Elements(const T (&)[N]) noexcept
+{
+	return N;
+}
 
 // Recorder Touch Point Data Packet
 struct touch_packet_t
@@ -97,7 +104,9 @@ class Share_ESPNOW
 		void onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len);
 		void find_peers(bool force = false);
 		bool send(chunk_t chunk);
-		bool send(game_data_chunk_t data);
+		bool send_gamedata(uint8_t *raw_ptr, uint8_t data_size);
+
+//		bool send(game_data_chunk_t data);
 
 		uint32_t calc_mac_val(const uint8_t mac[6]);
 

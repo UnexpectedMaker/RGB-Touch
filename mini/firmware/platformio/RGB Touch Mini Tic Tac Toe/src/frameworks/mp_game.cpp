@@ -6,7 +6,7 @@
 
 #include "mp_game.h"
 
-void MultiplayerGame::set_num_layers(uint8_t num)
+void MultiplayerGame::set_num_players(uint8_t num)
 {
 	max_players = num;
 }
@@ -31,6 +31,7 @@ bool MultiplayerGame::is_hosting()
 {
 	return is_host;
 }
+
 void MultiplayerGame::set_hosting(bool state)
 {
 	is_host = state;
@@ -38,3 +39,6 @@ void MultiplayerGame::set_hosting(bool state)
 
 	set_state(GameState::GAME_MENU);
 }
+
+// Base class pointer , extended class will have override functionality
+MultiplayerGame *game;

@@ -4,19 +4,35 @@
  * Uses ESP-NOW for device to device communication
  */
 
-#include "game_tictactoe.h"
-#include "../display/display.h"
-#include "../touch/touch.h"
-#include "share/share.h"
-#include "audio/audio.h"
+#include "../../display/display.h"
+#include "../../touch/touch.h"
+#include "../../share/share.h"
 
-void TicTacToe::send_data(DataType type, uint8_t data0, uint8_t data1)
+// Game specfic files
+#include "game_tictactoe.h"
+#include "audio/voice/voice_tic_tac_toe.h"
+
+TicTacToe ticTacToe;	// Create instance 
+
+TicTacToe::TicTacToe()
 {
-	game_data_chunk_t data;
+	game = this;	// Base class to take init
+
+	game_wav_files = {
+		{"tictactoe", SFX(voice_tic_tac_toe, sizeof(voice_tic_tac_toe))},
+	};
+
+	// for (size_t i = 0; i < 9; i++)
+	// 	board[i] = 0;
+}
+
+void TicTacToe::send_data(TTT_DataType type, uint8_t data0, uint8_t data1)
+{
+	ttt_game_data_chunk_t data;
 	data.data.dtype = (uint8_t)type;
 	data.data.data0 = data0;
 	data.data.data1 = data1;
-	share_espnow.getInstance().send(data);
+	share_espnow.getInstance().send_gamedata(data.raw, Elements(data.raw));
 }
 
 bool TicTacToe::touched_board(uint8_t x, uint8_t y)
@@ -36,12 +52,12 @@ bool TicTacToe::touched_board(uint8_t x, uint8_t y)
 				if (x < 6)
 				{
 					player_piece = BoardPiece::CROSS;
-					send_data(DataType::SET_PIECE, (uint8_t)BoardPiece::CIRCLE, 0);
+					send_data(TTT_DataType::SET_PIECE, (uint8_t)BoardPiece::CIRCLE, 0);
 				}
 				else
 				{
 					player_piece = BoardPiece::CIRCLE;
-					send_data(DataType::SET_PIECE, (uint8_t)BoardPiece::CROSS, 0);
+					send_data(TTT_DataType::SET_PIECE, (uint8_t)BoardPiece::CROSS, 0);
 				}
 
 				my_turn = true;
@@ -62,7 +78,7 @@ bool TicTacToe::touched_board(uint8_t x, uint8_t y)
 	return false;
 }
 
-bool TicTacToe::set_position(uint8_t position, BoardPiece piece)
+bool TicTacToe::set_position(uint8_t position, uint8_t piece)
 {
 	if (!my_turn)
 	{
@@ -74,7 +90,7 @@ bool TicTacToe::set_position(uint8_t position, BoardPiece piece)
 	{
 		if (board[position] == (uint8_t)BoardPiece::EMPTY)
 		{
-			board[position] = (uint8_t)piece;
+			board[position] = piece;
 			pos_fader[position] = 255;
 
 			moves_left--;
@@ -83,11 +99,11 @@ bool TicTacToe::set_position(uint8_t position, BoardPiece piece)
 
 			if (winning_player > 0)
 			{
-				send_data(DataType::END_GAME, position, piece);
+				send_data(TTT_DataType::END_GAME, position, piece);
 			}
 			else
 			{
-				send_data(DataType::SEND_MOVE, position, piece);
+				send_data(TTT_DataType::SEND_MOVE, position, piece);
 			}
 
 			my_turn = false;
@@ -100,13 +116,13 @@ bool TicTacToe::set_position(uint8_t position, BoardPiece piece)
 	return false;
 }
 
-void TicTacToe::update_position(uint8_t position, BoardPiece piece)
+void TicTacToe::update_position(uint8_t position, uint8_t piece)
 {
 	if (position < 9)
 	{
 		if (board[position] == (uint8_t)BoardPiece::EMPTY)
 		{
-			board[position] = (uint8_t)piece;
+			board[position] = piece;
 			pos_fader[position] = 0;
 
 			moves_left--;
@@ -117,6 +133,10 @@ void TicTacToe::update_position(uint8_t position, BoardPiece piece)
 				my_turn = true;
 		}
 	}
+}
+
+void TicTacToe::update_loop()
+{
 }
 
 void TicTacToe::display_game()
@@ -264,16 +284,16 @@ uint8_t TicTacToe::check_winner()
 	return 0;
 }
 
-void TicTacToe::start_game(BoardPiece piece)
+void TicTacToe::start_game(uint8_t piece)
 {
-	player_piece = piece;
+	player_piece = (BoardPiece)piece;
 }
 
-void TicTacToe::set_piece(BoardPiece piece)
+void TicTacToe::set_piece(uint8_t piece)
 {
 	if ((host_starts && !is_hosting()) || (!host_starts && is_hosting()))
 	{
-		player_piece = piece;
+		player_piece = (BoardPiece)piece;
 
 		info_printf("Setting player piece to %d\n", piece);
 
@@ -302,6 +322,19 @@ void TicTacToe::reset_game()
 	set_state(GameState::GAME_MENU);
 }
 
+void TicTacToe::kill_game()
+{
+	info_printf("Kill game while in %s\n", game_state_names[(uint8_t) get_state() ]);
+}
+
+void TicTacToe::set_hosting(bool state)
+{
+	MultiplayerGame::set_hosting(state);
+
+	// Play sound on game state change
+	audio_player.play_wav("tictactoe");
+}
+
 void TicTacToe::set_state(GameState s)
 {
 	info_printf("New State will be: %s\n", game_state_names[(uint8_t)s]);
@@ -314,4 +347,43 @@ void TicTacToe::set_state(GameState s)
 	MultiplayerGame::set_state(s);
 }
 
-TicTacToe game;
+bool TicTacToe::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len)
+{
+	// not for us , this needs to be updated to check data for a specific Key
+	if (data_len != sizeof(ttt_game_data_t) ) {
+		return false;
+	}
+
+	ttt_game_data_chunk_t *new_packet = reinterpret_cast<ttt_game_data_chunk_t *>((uint8_t *)data);
+
+	info_print("Data: ");
+	for (int i = 0; i < data_len; i++)
+	{
+		info_printf("%d ", (uint8_t)data[i]);
+	}
+
+	info_println();
+
+	if ((TTT_DataType)data[0] == TTT_DataType::SEND_MOVE || (TTT_DataType)data[0] == TTT_DataType::END_GAME)
+	{
+		update_position((uint8_t)data[1], (BoardPiece)(uint8_t)data[2]);
+	}
+	else 
+	{
+		set_piece((BoardPiece)(uint8_t)data[1]);
+	}	
+
+	return true;
+}
+
+SFX TicTacToe::get_game_wave_file(const char *wav_name)
+{
+	SFX file;
+
+	if (game_wav_files.count(wav_name)>0)
+	{
+		file = game_wav_files[wav_name];
+	}
+
+	return file;
+}
