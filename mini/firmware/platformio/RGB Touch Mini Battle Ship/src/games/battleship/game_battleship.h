@@ -16,17 +16,33 @@ const uint16_t HIT_COLOR = RGB_COLOR(0xCF,0x00,0x00);
 const uint16_t KILL_COLOR = RGB_COLOR(0xFF,0x00,0x00);
 
 const int DEBONCE = 100;	// 1/10 of a second 
-
+const int MS_SECOND = 1000;	
 const int AI_LOOK_BACK = 5;	// Look back 5 * ai level (easy/meduim/hard)
+
+const ShipType FLEET[] = {	// Reverse to give bigger ships a chance
+//	AIRCRAFT,
+//	BATTLESHIP,
+	CRUISER,
+//	DESTROYER, 
+//	DESTROYER,
+//	SUBMARINE,
+	SUBMARINE,
+};
 
 enum BattleShipState : uint8_t
 {
 	BS_NONE = 0,
 	BS_BOARD_SETUP = 1,		// Board created 
 	BS_BOARD_READY = 2,		// Pending user to accept board
-	BS_AWAITING_ENEMY = 3,	// Board accepted, waiting on other player
+	BS_WAITING_ENEMY = 3,	// Board accepted, waiting on other player
 	BS_ACTIVE = 4,			// Both boards setup and ready
-	BS_ENDING = 5,			// After winner is announced
+	BS_WAITING_REPLY = 5,	//
+	BS_SHOOTING = 6,		// Anim incoming, swap to miss/hit/destroy
+	BS_MISS = 7,			// Anim incoming, swap to miss/hit/destroy
+	BS_HIT = 8,				// Anim incoming, swap to miss/hit/destroy
+	BS_DESTROYED = 9,			// Anim incoming, swap to miss/hit/destroy
+
+	BS_ENDING = 10,			// After winner is announced
 };
 
 static String battleship_state_names[] =
@@ -34,8 +50,14 @@ static String battleship_state_names[] =
 	"NONE",
 	"BOARD SETUP",
 	"READY",
-	"AWAITING",
+	"WAITING ENEMY",
 	"ACTIVE",
+	"WAITING REPLY",
+	"SHOOTING",
+	"MISS",
+	"HIT",
+	"DESTROYED",
+
 	"ENDING",
 };
 
@@ -50,13 +72,15 @@ enum BS_DataType : uint8_t
 	// * allow user to move pieces 
 	// ** Select first then select area to move top or left most section
 
-	SEND_MOVE = 3, // More user fire at square
-	SEND_DESTROYED_SHIP = 4,
+	SHOT_FIRED = 2,
+	SHOT_MISS = 3, 
+	SHOT_HIT = 4, 		// _misc == hit count left
+	SHIP_KILLED = 5, 	// _misc == ship direction
 
+	TOGGLE_TURN = 6,	// _misc == hits left, 0 means game over to winner
 	// End of game winner sends ships not destroyed
-	SEND_ALIVE_SHIP = 5,
 
-	END_GAME = 6,
+	SHIP_ALIVE = 7,
 };
 
 struct bs_game_data_t
@@ -67,6 +91,7 @@ struct bs_game_data_t
 	uint8_t data_y;		// Y - fire or ship start
 	uint8_t data_id;	// ID - ship id , 0 means fire 
 	uint8_t data_misc;	// direction - only used if ship
+	uint8_t data_total_hits;	// how many hits are left for the board
 };
 
 typedef union
@@ -78,6 +103,7 @@ typedef union
 
 	uint8_t raw[sizeof(bs_game_data_t)];
 } bs_game_data_chunk_t;
+
 
 class BattleShip : public MultiplayerGame
 {
@@ -105,9 +131,11 @@ class BattleShip : public MultiplayerGame
 
 		unsigned long next_display_update = 0;
 
+		bool enemy_killed = false;
+
 		bool my_turn = false;
 		bool host_starts = true;
-		uint8_t players_ready = 0;		// 
+		bool players_ready = false;		// 
 
 		bool noEdgeShips = false;		// Ships are not allowed on edge if true, toggle on board create
 		bool noTouchingShips = false;	// Ships cant touch if true
@@ -126,17 +154,23 @@ class BattleShip : public MultiplayerGame
 		std::vector<SHIP> ships_kiiled;
 		std::vector<SHIP> ships_survied;
 
-		// Temp vars for now
+		//
+		int animLastms = 0;
+		int animCounter = 0;
+		Dot shotResults;
+
+		// Temp vars 
 		int tempLastms = 0;
-		uint8_t tempCounter = 0;
+		int tempCounter = 0;
 
 		// 
 		void start_game();
 		void reset_game();
 		void end_game();	
-		uint8_t get_hits_left();
+		uint8_t get_total_hits_left();
 
 		//
+		void send_data(BS_DataType _type);
 		void send_command(BS_DataType _type, uint8_t _control);
 		void send_data(BS_DataType _type, uint8_t _misc, uint8_t _x, uint8_t _y, uint8_t _id);
 
@@ -145,10 +179,15 @@ class BattleShip : public MultiplayerGame
 		void process_last_touch(uint8_t x, uint8_t y);
 		
 		//
-		void render_game_board(bool demoMode);
+		void render_game_board();
+		void render_active_board(bool demoMode);
+		void update_board_state();
 		void change_game_state(BattleShipState s);
 		void create_random_board();
-		void check_end_game();
+		bool check_end_game();
+		void end_turn();
+		SHIP* CheckShipHit(int x , int y, bool splash);
+
 
 		// Kinda AI ish thinking 
 		int ai_level = 3;

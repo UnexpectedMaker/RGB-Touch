@@ -10,16 +10,6 @@ enum ShipType : uint8_t
 	AIRCRAFT = 5,	// 1x RED
 };
 
-const ShipType FLEET[] = {	// Reverse to give bigger ships a chance
-	AIRCRAFT,
-	BATTLESHIP,
-	CRUISER,
-	DESTROYER,
-	DESTROYER,
-	SUBMARINE,
-	SUBMARINE,
-};
-
 const uint8_t SHIP_COLOR[7][3] = {
 	{  0x00, 0x00, 0x00 },		// empty
 	{  0x00, 0x00, 0xC0 },		// SUBMARINE
@@ -81,12 +71,20 @@ public:
 			return shipID;
 		}
 
+		bool getDirection() {
+			return horiz;
+		}
+
+		Dot getStartPos() {
+			return Dot(sx,sy,0);
+		}
+
 		uint8_t get_hits_left() {
 			return (uint8_t) ( hits > 0 ? hits : 0);
 		}
 
 		bool isDestroyed() {
-			return hits>0;
+			return hits<=0;
 		}		
 
 		// DEBUG : Use true to check ship no touching boundary
@@ -217,7 +215,7 @@ public:
 				}
 			}
 
-			info_printf("hit ship %d, x: %d, y: %d hits left %d\n",shipID , _sx, _sy, (hits-1));	
+//			info_printf("hit ship %d, x: %d, y: %d hits left %d\n",shipID , _sx, _sy, (hits-1));	
 
 			// Subtract hits and return : 0 means ship dead 
 			// (doesnt check for over hit , so call must know this square was not used before)

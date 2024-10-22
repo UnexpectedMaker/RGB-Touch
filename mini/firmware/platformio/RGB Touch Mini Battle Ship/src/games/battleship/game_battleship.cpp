@@ -3,10 +3,15 @@
  *
  * Uses ESP-NOW for device to device communication
 
+* TODO
+
+Network 
+Peer Join - retain ID 
+Peer lost 
+
 audio_player.play_note(6, 11, 1.0, 1);
 audio_player.play_note(11, 11, 1.0, 1);
 audio_player.play_note(0, 0, 1.0, 1);
-
 
  */
 
@@ -23,6 +28,9 @@ audio_player.play_note(0, 0, 1.0, 1);
 #include "audio/voice/gameover.h"
 #include "audio/voice/battleship.h"
 
+//#include "esp_debug_helpers.h"
+//	esp_backtrace_print(2);
+
 BattleShip battleShip;	// Create instance , so we can notify core
 
 
@@ -35,6 +43,7 @@ BattleShip::BattleShip()
 	game_wav_files = {
 //		{"miss", SFX(voice_miss, sizeof(voice_miss))},
 //		{"hit", SFX(voice_hit, sizeof(voice_hit))},
+//		{"kill", SFX(voice_kill, sizeof(voice_kill))},
 		{"gameover", SFX(gameover, sizeof(gameover))},
 		{"battleship", SFX(gameover, sizeof(gameover))},
 	};
@@ -80,29 +89,34 @@ bool BattleShip::touched_board(uint8_t x, uint8_t y)
 }
 
 // Change state , logic and clear
-void BattleShip::change_game_state(BattleShipState s)
+void BattleShip::change_game_state(BattleShipState new_state)
 {
-	bs_state = s;
-	info_printf("Change Game Battle State: %s\n", battleship_state_names[(uint8_t)bs_state]);
+//	info_printf("change_game_state FROM : %s\n", battleship_state_names[(uint8_t)bs_state]);
+//	info_printf("change_game_state State: %s\n", game_state_names[(uint8_t)get_state()]);
 
-	switch( bs_state ) {
+	if ( bs_state == new_state ) {
+		info_printf(" ERROR ALREADY on Battle State : %s\n", battleship_state_names[(uint8_t)bs_state]);
+		return;
+	}
+
+//	esp_backtrace_print(2);
+
+	switch( new_state ) {
 
 		// TODO : have a demo mode ?
+		case BattleShipState::BS_NONE:
+		{
+			my_turn = false;
+			players_ready = false;
+		}
+		break;
 
 		//
 		case BattleShipState::BS_BOARD_SETUP:
 		{
 			// Make function
 			{
-				players_ready = 0;
-
 				ai_level = ( std::rand() % 3 ) + 1;
-
-				// Clear game data before we start a battle
-				ships.clear();
-				shots_fired.clear();
-				incoming_shots.clear();
-				ships_kiiled.clear();
 
 				info_printf("create_random_board AI[%d] Board\n", ai_level);
 
@@ -132,40 +146,138 @@ void BattleShip::change_game_state(BattleShipState s)
 				}
 			}
 
-			// choose demo
+			// Do we have a peer - Future will move this to onData revieve 
 			if (share_espnow.getInstance().has_peer())
 			{
 				set_state(GameState::GAME_MENU);
-				bs_state = BattleShipState::BS_BOARD_READY;
+				new_state = BattleShipState::BS_BOARD_READY;
 
 				// Setup temp to be our counter before we lock the board
-				tempLastms = millis();
-				tempCounter = MATRIX_SIZE;
+				animLastms = millis();
+				animCounter = (int)(15000/500);	// every 500ms for 15seconds 
 			}
 			else 
 			{
 				// Demo go straight to BS Active 
-				bs_state = BattleShipState::BS_ACTIVE;
+				new_state = BattleShipState::BS_ACTIVE;
 			}
 		}
 		break;
 
-		case BattleShipState::BS_AWAITING_ENEMY:
+		case BattleShipState::BS_WAITING_ENEMY:
+			my_turn = false;
 			set_state(GameState::GAME_RUNNING);
 
-			send_data(BS_DataType::WAITING_TO_PLAY,0,0,0,0);
+			if ( !players_ready ) {
+				send_data(BS_DataType::WAITING_TO_PLAY,(host_starts<<1)|(is_hosting()),0,0,0);
+				info_printf("SEND WAITING_TO_PLAY %d , starts %d \n", is_hosting(), host_starts);
+			}
+		break;
+
+		case BattleShipState::BS_ACTIVE:
+
+		break;
+
+		case BattleShipState::BS_SHOOTING:
+		{
+			animLastms = millis();
+
+			if ( my_turn ) {
+				// Anim frames .. resets to 4 - hard coded make consts
+				animCounter = 4;
+			} else {
+				// TODO : ANIM an incoming shoot
+				animCounter = 1;
+//				animCounter = (int) ((MS_SECOND*10)/100);	// every 100ms for 10seconds
+			}
+
+			info_printf("BS_SHOOTING: %d %d\n", animCounter, animLastms);
+		}
+		break;
+
+		case BattleShipState::BS_MISS:
+		{
+			animLastms = millis();
+
+			if ( !my_turn ) {
+				// TODO : ANIM an MISS ? play Sound ?
+				animCounter = 0;
+			} else {
+				// TODO : ANIM an MISS ? play Sound ?
+				animCounter = 1;
+//				animCounter = (int) ((MS_SECOND*10)/100);	// every 100ms for 10seconds
+			}
+
+			info_printf("BS_MISS: %d %d\n", animCounter, animLastms);
+		}
+		break;
+
+		case BattleShipState::BS_HIT:
+		{
+			animLastms = millis();
+
+			if ( !my_turn ) {
+				// TODO : ANIM an HIT ? play Sound ?
+				animCounter = 0;
+			} else {
+				// TODO : ANIM an HIT ? play Sound ?
+				animCounter = 1;
+//				animCounter = (int) ((MS_SECOND*10)/100);	// every 100ms for 10seconds
+			}
+
+			info_printf("BS_HIT: %d %d\n", animCounter, animLastms);
+		}
+		break;
+
+		case BattleShipState::BS_DESTROYED:
+		{
+			animLastms = millis();
+
+			if ( !my_turn ) {
+				// TODO : ANIM an KILL ? play Sound ?
+				animCounter = 0;
+			} else {
+				// TODO : ANIM an KILL ? play Sound ?
+				animCounter = 1;
+//				animCounter = (int) ((MS_SECOND*10)/100);	// every 100ms for 10seconds
+			}
+
+			info_printf("BS_DESTROYED: %d %d\n", animCounter, animLastms);
+		}
 		break;
 
 		case BattleShipState::BS_ENDING:
 		{
-			audio_player.play_wav_queue("gameover");
+			my_turn = false;
 
-			tempLastms = millis();
-			tempCounter = 10;
+//			info_printf("BS_ENDING: %d %d\n", animCounter, animLastms);
+
+			if (get_state() == GameState::GAME_RUNNING) {
+
+				audio_player.play_wav_queue("gameover");
+
+				// Sent any ships that are alive
+				for (SHIP &vessel : ships) {
+
+					if ( !vessel.isDestroyed() ) {
+						Dot d = vessel.getStartPos();
+						send_data(BS_DataType::SHIP_ALIVE,vessel.getDirection(), d.x, d.y, vessel.getID());
+					}
+				}
+
+				// This will mark the battle as ended , so only send if we have ship
+				send_data(BS_DataType::TOGGLE_TURN);
+			}
+
+			animLastms = millis();
+			animCounter = (int) ((MS_SECOND*10)/MS_SECOND);	// every second for 10seconds
 		}
 		break;
-
 	}
+
+	bs_state = new_state;
+//	info_printf("change_game_state State TO : %s\n", battleship_state_names[(uint8_t)bs_state]);
+//  info_printf("change_game_state State: %s\n", game_state_names[(uint8_t)get_state()]);
 }
 
 void BattleShip::process_last_touch(uint8_t x, uint8_t y)
@@ -174,24 +286,25 @@ void BattleShip::process_last_touch(uint8_t x, uint8_t y)
 	{
 		info_printf("process_last_touch Game State: %s\n", game_state_names[(uint8_t)get_state()]);
 
+		switch(bs_state) {
+
+			// reset if touched while in board ready 
+			case BattleShipState::BS_BOARD_READY:
+			{
+				change_game_state( BattleShipState::BS_BOARD_SETUP );
+			}
+			break;
+		}
+
 		if ((host_starts && is_hosting()) || (!host_starts && !is_hosting()))
 		{
-			switch(bs_state) {
-
-				// reset if touched while in board ready 
-				case BattleShipState::BS_BOARD_READY:
-				{
-					change_game_state( BattleShipState::BS_BOARD_SETUP );
-				}
-				break;
-			}
+			
 
 /*
 //					player_piece = BoardPiece::CROSS;
 //					send_data(DataType::SET_PIECE, (uint8_t)BoardPiece::CIRCLE, 0);
 enum BS_DataType : uint8_t
 {
-	WANT_TO_PLAY = 0,		// FUIURE to force them into this game mode
 	WAITING_TO_PLAY = 1, 
 
 	// TODO : more User is building board
@@ -224,16 +337,38 @@ enum BS_DataType : uint8_t
 
 		if ( bs_state == BattleShipState::BS_ACTIVE ) {
 
-			info_printf("GAME TOUCH ACTIVE x: %d, y: %d - %s\n", x, y , battleship_state_names[(uint8_t)bs_state]);
-
 			if ( my_turn ) {
 
+				bool clearToFire = true;
+				for (Dot &shot : shots_fired) {
+				
+					if ( shot.x == x && shot.y == y ) {
+						clearToFire = false;
+						break;
+					}
+				}
+
+				if ( clearToFire ) {
+
+					// Make function ?
+					info_printf("GAME TOUCH FIRE[%d] x: %d, y: %d - %d %s\n",my_turn , x, y , get_total_hits_left(), battleship_state_names[(uint8_t)bs_state]);
+					audio_player.play_note(6, 11, 1.0, 1);
+
+					shotResults = Dot(x, y, 0);
+
+					send_data(BS_DataType::SHOT_FIRED,0,x,y,0);
+					change_game_state( BattleShipState::BS_SHOOTING);
+
+				} else {
+					info_printf("GAME TOUCH NO FIRE[%d] x: %d, y: %d - %d %s\n",my_turn , x, y , get_total_hits_left(), battleship_state_names[(uint8_t)bs_state]);
+					audio_player.play_note(0, 0, 1, 0.2);
+				}
 
 				// TODO : check if have fired here before 
 				// * Send fire and return
+			} else {
+				info_printf("GAME TOUCH ACTIVE[%d] x: %d, y: %d - %d %s\n",my_turn , x, y , get_total_hits_left(), battleship_state_names[(uint8_t)bs_state]);
 			}
-
-			// TODO : play error
 		}
 	}
 }
@@ -298,8 +433,6 @@ void BattleShip::update_position(uint8_t position, uint8_t piece)
 }
 */
 
-
-
 void BattleShip::update_loop()
 {
 	// Lets make random cycle every loop
@@ -325,25 +458,30 @@ void BattleShip::update_loop()
 	// Start a demo mode for now
 	if (get_state() == GameState::GAME_WAITING)
 	{
-		// Toggle between demo and waiting mode
+		// Stop demo if we have a peer : This needs to change so we get a message to say they are a BattleShip Game
 		if (share_espnow.getInstance().has_peer()) {
 			kill_game();
-			return;
-		}
 
-		// If we have no setup , lets create a board
-		if ( bs_state == BattleShipState::BS_NONE ) {
+			change_game_state( BattleShipState::BS_BOARD_SETUP );		
+			return;
+		} else if ( bs_state == BattleShipState::BS_NONE ) {
+			// If we have no setup , lets create a board for AI/Demo Play
 			change_game_state( BattleShipState::BS_BOARD_SETUP );		
 		}
 		
 		// Waiting is Demo Mode for now
 		if ( bs_state == BattleShipState::BS_ACTIVE ) {
 
-			// TODO : move this to its own AI class
+// TODO : move this to its own AI class
 
 			// 1/2 a Second fire rate
 			if ( millis() - tempLastms >= 500 ) {
 				tempLastms = millis();
+
+				if ( check_end_game() ) {
+					change_game_state( BattleShipState::BS_ENDING );
+					return;		
+				}
 
 				// TODO : improve by 
 				// * Knowing which direction caused a chain hit and carry in that direction
@@ -435,57 +573,51 @@ void BattleShip::update_loop()
 				// Drop last one , either original or latest swap
 				available_shots.pop_back();
 
-				std::string sfx = "beep";
-
 				uint16_t fireColor = SHOT_COLOR;	
 
-				for (SHIP &vessel : ships) {
-					int8_t hitsLeft = vessel.hitCheck(shot.x, shot.y,false);
+				SHIP* hitShip = CheckShipHit(shot.x, shot.y, false);
 
-					// Future to test kill vessel if count = 0
-					if ( hitsLeft >= 0 ) {
-						if ( hitsLeft == 0 ) {
-							fireColor = KILL_COLOR;
-							sfx = "destroy";
-						} else {
-							fireColor = HIT_COLOR;
-							sfx = "hit";
-						}
-
-						// Force vessel into destoryed
-						if ( hitsLeft == 0 ) {
-							ships_kiiled.push_back( vessel.duplicate(true) );
-							audio_player.play_note(6, 11, 1.0, 1);
-						} else {
-							audio_player.play_note(0, 6, 1.0, 0.2);
-						}
+				if ( hitShip ) {
+					if ( hitShip->isDestroyed() ) {
+						ships_kiiled.push_back( hitShip->duplicate(true) );
+						fireColor = KILL_COLOR;
+					} else {
+						fireColor = HIT_COLOR;
 					}
 				}
-
-				//
-				// audio_player.play_wav_queue(sfx);
-
+				
 				// Set fired in demo
 				Dot d = Dot(shot.x, shot.y, fireColor);
 				shots_fired.push_back(d);
+
 //				info_printf("Shoot x: %d, y: %d\n" , shot.x, shot.y );
 			}
 		}
 	} else if (get_state() == GameState::GAME_MENU) {
 
-		// in menu reset board
-		if ( bs_state != BattleShipState::BS_BOARD_READY ) {
-			kill_game();
-			change_game_state( BattleShipState::BS_NONE );		
-		}
+		// Any other state we should kill game
+		if ( bs_state == BattleShipState::BS_BOARD_READY ) {
 
+			// trap to allow game to run (demo)			
+
+		} else if ( bs_state == BattleShipState::BS_WAITING_ENEMY ) {
+
+			// trap to allow game to run (demo)			
+
+		} else {
+			// TODO : know if the board needs to be killed ?
+			// in menu reset board
+//			kill_game();
+		}
 
 	} else if (get_state() == GameState::GAME_RUNNING) {
 
 
 
 	} 
-	
+
+/* TODO : is this needed ?
+
 	{
 		if (!share_espnow.getInstance().has_peer()) {
 //			info_printf("GAME STATE NO PEERS: %s\n", game_state_names[(uint8_t)get_state()]);
@@ -493,57 +625,230 @@ void BattleShip::update_loop()
 
 		// 
 		if ( bs_state == BattleShipState::BS_NONE ) {
+			info_printf("RUNNING UPDATE LOOP - BS_BOARD_SETUP\n");
 			change_game_state( BattleShipState::BS_BOARD_SETUP );		
 		}
 	}
+*/
+	update_board_state();
+}
 
+void BattleShip::update_board_state()
+{
 	switch (bs_state) {
+
+		// no State no board process
+		case BattleShipState::BS_NONE:
+			return;
 
 		case BattleShipState::BS_BOARD_SETUP:
 		break;
 
 		case BattleShipState::BS_BOARD_READY:
 			
-			// Count X every second till we 
-			if ( millis() - tempLastms >= 1000 ) 
+			// TODO : const
+
+			// Anim counter for bar
+			if ( millis() - animLastms >= 500 ) 
 			{
-				tempLastms = millis();
+				animLastms = millis();
 
-				tempCounter--;
+				animCounter--;
 
-				if ( tempCounter == 0 ) {
-					info_printf("Board applied \n");
-					change_game_state( BattleShipState::BS_AWAITING_ENEMY );
+				if ( animCounter == 0 ) {
+					info_printf("Board applied hosting %d , starts %d \n", is_hosting(), host_starts);
+					change_game_state( BattleShipState::BS_WAITING_ENEMY );
 				}
 			}
 		break;
 
-		case BattleShipState::BS_AWAITING_ENEMY:
-			// TODO : waiting on enemy to be ready 
+		case BattleShipState::BS_WAITING_ENEMY:
+
+			// Once they announce ready, lets start game
+			if ( players_ready ) {
+				info_printf("Players waiting - start game %d , starts %d \n", is_hosting(), host_starts);
+				start_game();
+			}
+
 		break;
 
 		case BattleShipState::BS_ACTIVE:
 		{
-			// Check END 
-			battleShip.check_end_game();
+			// TODO : check for lost connection/peer ?
 
 			// TODO : logic on player ? 
 
-			break;
 		}
+		break;
+
+		// Anim Firing shot
+		case BattleShipState::BS_SHOOTING:
+		{
+			if ( animCounter > 0 ) {
+			
+				if ( millis() - animLastms >= 100 ) {
+					animLastms = millis();
+					animCounter--;
+
+					if ( my_turn && animCounter <= 0) {
+
+						if ( shotResults.color == 0 ) {
+							animCounter = 4;
+						}
+					}
+				}
+				break;
+			}
+
+			// on our turn , state change based on color 
+			if ( my_turn ) {
+					shots_fired.push_back(shotResults);
+				if ( shotResults.color == KILL_COLOR ) {
+					change_game_state( BattleShipState::BS_DESTROYED );
+				} else if ( shotResults.color == HIT_COLOR ) {
+					change_game_state( BattleShipState::BS_HIT);
+				} else {
+					change_game_state( BattleShipState::BS_MISS );
+				}
+				break;
+			}
+
+			info_printf("BS_SHOOTING: %d %d\n", animCounter, millis());
+
+			// Check if shot hit our ships
+//			Dot d = incoming_shots[incoming_shots.size()-1];
+
+			shotResults.color = SHOT_COLOR;
+
+			// Check for hit and reply
+			SHIP* hitShip = CheckShipHit(shotResults.x, shotResults.y, false);
+
+			if ( hitShip == nullptr ) {
+				info_printf("update_board_state SEND SHOT MISS : %d %d\n", shotResults.x, shotResults.y );
+				send_data(BS_DataType::SHOT_MISS,0,shotResults.x, shotResults.y,0);
+			} else {
+
+				info_printf("update_board_state SEND SHOT HIT : %d %d\n", shotResults.x, shotResults.y );
+				send_data(BS_DataType::SHOT_HIT,hitShip->get_hits_left(),shotResults.x, shotResults.y,0); // optional ship id hitShip->getID());
+				shotResults.color = HIT_COLOR;
+
+				if ( hitShip->isDestroyed() ) {
+					Dot sp = hitShip->getStartPos();
+					info_printf("update_board_state SEND SHOT KILL : %d %d\n", sp.x, sp.y );
+					send_data(BS_DataType::SHIP_KILLED,hitShip->getDirection(),sp.x, sp.y,hitShip->getID());
+					shotResults.color = KILL_COLOR;
+				}
+			}
+
+			incoming_shots.push_back(shotResults);
+
+			change_game_state( BattleShipState::BS_WAITING_REPLY );
+		}
+		break;
+
+		// Anim Miss Shot
+		case BattleShipState::BS_MISS:
+		{
+			if ( animCounter > 0 ) {
+			
+				if ( millis() - animLastms >= MS_SECOND ) {
+					animLastms = millis();
+					animCounter--;
+				}
+
+				break;
+			}
+
+			// not our turn, anim only 
+			if ( !my_turn ) {
+				break;
+			}
+
+			info_printf("BS_MISS: %d %d\n", animCounter, millis());
+
+			// End turn on miss 
+			end_turn();
+		}
+		break;
+
+		// Anim hit Shot
+		case BattleShipState::BS_HIT:
+		{
+			if ( animCounter > 0 ) {
+			
+				if ( millis() - animLastms >= MS_SECOND ) {
+					animLastms = millis();
+					animCounter--;
+				}
+
+
+				break;
+			}
+
+			// not our turn, anim only 
+			if ( !my_turn ) {
+				break;
+			}
+
+
+			info_printf("BS_HIT: %d %d\n", animCounter, millis());
+
+			// Allow to fire again
+			change_game_state( BattleShipState::BS_ACTIVE );
+		}
+		break;
+
+		// Anim Kill shot
+		case BattleShipState::BS_DESTROYED:
+		{
+			if ( animCounter > 0 ) {
+			
+				if ( millis() - animLastms >= MS_SECOND ) {
+					animLastms = millis();
+					animCounter--;
+				}
+
+
+				break;
+			}
+
+			// not our turn, anim only 
+			if ( !my_turn ) {
+				break;
+			}
+
+			if ( enemy_killed ) {
+
+				end_game();
+	//			change_game_state( BattleShipState::BS_ACTIVE );
+
+			} else {
+				info_printf("BS_DESTROYED: %d %d\n", animCounter, millis());
+				// TODO : end turn or allow two shots depending on game mode ?
+				// Allow to fire again
+				change_game_state( BattleShipState::BS_ACTIVE );
+			}
+		}
+		break;
 
 		case BattleShipState::BS_ENDING:
 		{
+			info_printf("BS_ENDING: %d %d\n", animCounter, animLastms);
+
 			// TODO : some form of animation
-			if ( millis() - tempLastms >= 1000 ) 
+			if ( millis() - animLastms >= MS_SECOND ) 
 			{
-				tempLastms = millis();
+				animLastms = millis();
 
-				tempCounter--;
+				animCounter--;
 
-				if ( tempCounter == 0 ) {
-					info_printf("Game Over to new board\n");
+				if ( animCounter == 0 ) {
+
+					//
+					info_printf("Game Over reset state\n");
+
 					change_game_state( BattleShipState::BS_NONE );
+					set_state(GameState::GAME_WAITING);
 				}
 			}
 		}
@@ -551,118 +856,48 @@ void BattleShip::update_loop()
 	}
 }
 
+SHIP* BattleShip::CheckShipHit(int x , int y, bool splash) 
+{
+	std::string sfx = "miss";
+
+	for (SHIP &vessel : ships) {
+		int8_t hitsLeft = vessel.hitCheck(x, y, splash);
+
+		if ( hitsLeft >= 0 ) {
+			if ( hitsLeft == 0 ) {
+				audio_player.play_note(6, 11, 1.0, 1);
+				sfx = "kill";
+			} else {
+				audio_player.play_note(0, 6, 1.0, 0.2);
+				sfx = "hit";
+			}
+
+			return std::addressof(vessel);
+		}
+	}
+
+	return nullptr;
+}
+
 void BattleShip::display_game()
 {
-
 	if (get_state() == GameState::GAME_WAITING) {
-		// DEMO MODE - move to logic 
 
-		// If we have no setup , lets create a board - move to logic
-		if ( bs_state == BattleShipState::BS_NONE ) {
-			display.clear();
-			change_game_state( BattleShipState::BS_BOARD_SETUP );
-		}
-
-		//
-		render_game_board(true);
-
-/*		
-		// TODO ? Change ?
-		if (millis() - next_display_update > wait_period)
-		{
-			next_display_update = millis();
-
-			display.fade_leds_to(80);
-			if (!share_espnow.getInstance().has_peer())
-			{
-				display.draw_line(waiting_radius[0], 0, waiting_radius[0], 11, display.Color(0, 0, 128));
-				waiting_radius[0] += 1;
-				if (waiting_radius[0] == 12)
-					waiting_radius[0] = 0;
-
-				wait_period = 100;
-			}
-			else
-			{
-				uint32_t col = display.Color(0, 128, 0);
-				if (is_hosting())
-					col = display.Color(0, 0, 128);
-
-				display.draw_line(6 + waiting_radius[0], 0, 6 + waiting_radius[0], 11, col);
-				display.draw_line(5 - waiting_radius[0], 0, 5 - waiting_radius[0], 11, col);
-				waiting_radius[0] += 1;
-				if (waiting_radius[0] >= 6)
-					waiting_radius[0] = 0;
-
-				wait_period = 150;
-			}
-		}
-*/		
+		render_game_board();
 	}
 	else if (get_state() == GameState::GAME_MENU)
 	{
-		// 
-		render_game_board(false);
+		render_game_board();
 
 		if ( bs_state == BattleShipState::BS_BOARD_READY ) {
-			display.draw_line(0,MATRIX_SIZE-1,tempCounter-1,MATRIX_SIZE-1, display.Color(128, 0, 0) );
+			if ( animCounter&1 ) {
+				display.draw_line(0,MATRIX_SIZE-1,(animCounter/2),MATRIX_SIZE-1, display.Color(128, 0, 0) );
+			}
 		}
-
 	}
 	else if (get_state() == GameState::GAME_RUNNING)
 	{
-		render_game_board(false);
-		
-/*
-		for (uint8_t i = 0; i < 9; i++)
-		{
-			bool found = false;
-			if (board[i] == BoardPiece::CROSS)
-			{
-				found = true;
-				display.show_icon(&display.icons["cross_small"], piece_pos_x[i], piece_pos_y[i], pos_fader[i]);
-			}
-			else if (board[i] == BoardPiece::CIRCLE)
-			{
-				found = true;
-				display.show_icon(&display.icons["circle_small"], piece_pos_x[i], piece_pos_y[i], pos_fader[i]);
-			}
-			if (found && winning_player == 0)
-				pos_fader[i] = constrain(pos_fader[i] + 10, 0, 255);
-		}
-
-		// flash winning pieces, but not if it's a draw
-		if (winning_player > 0 && winning_player < 99)
-		{
-			for (size_t i = 0; i < 3; i++)
-			{
-				uint8_t _flash = pos_fader[winning_combinations[winning_combo][i]];
-				if (i == 0)
-				{
-					if ((_flash == 255 && flashing_winner) || (_flash == 50 && !flashing_winner))
-					{
-						flashing_winner = !flashing_winner;
-						winner_flash_counter--;
-						if (winner_flash_counter == 0)
-						{
-							end_game();
-						}
-					}
-				}
-
-				pos_fader[winning_combinations[winning_combo][i]] = constrain(_flash + (flashing_winner ? 10 : -10), 50, 255);
-				// info_printf("winner flash %d %d %d\n", winning_combo, i, pos_fader[winning_combinations[winning_combo][i]]);
-			}
-		}
-		else if (winning_player == 99)
-		{
-			winner_flash_counter--;
-			if (winner_flash_counter == 0)
-			{
-				end_game();
-			}
-		}
-*/
+		render_game_board();
 	}
 	else if (get_state() == GameState::GAME_ENDED)
 	{
@@ -672,15 +907,21 @@ void BattleShip::display_game()
 	}
 }
 
-void BattleShip::render_game_board(bool demoMode)
+void BattleShip::render_game_board()
 {
+	if ( bs_state == BattleShipState::BS_NONE ) {
+		return;
+	}
+
+	bool demoMode = (get_state() == GameState::GAME_WAITING);
+
 	display.clear();
 
 	switch (bs_state) {
 
 		case BattleShipState::BS_BOARD_SETUP:
 		case BattleShipState::BS_BOARD_READY:
-		case BattleShipState::BS_AWAITING_ENEMY:
+		case BattleShipState::BS_WAITING_ENEMY:
 		{
 			// Draw ships always
 			for (SHIP &vessel : ships) {
@@ -689,73 +930,172 @@ void BattleShip::render_game_board(bool demoMode)
 		}
 		break;
 
+// TODO : animation on each state of attack
+		case BattleShipState::BS_SHOOTING:
+		{
+			render_active_board(demoMode);
+
+			if ( my_turn ) {
+
+				int sx=shotResults.x;
+				int sy=shotResults.y;
+				int ex=shotResults.x;
+				int ey=shotResults.y;
+
+				// Anim on shooting - Spinning star
+				switch ( animCounter%4 ) {
+					case 0:
+						sy = constrain(shotResults.y-1,0, MATRIX_SIZE-1);
+						ey = constrain(shotResults.y+1,0, MATRIX_SIZE-1);
+					break;
+
+					case 1:
+						sy = constrain(shotResults.y-1,0, MATRIX_SIZE-1);
+						ey = constrain(shotResults.y+1,0, MATRIX_SIZE-1);
+					case 2:
+						sx = constrain(shotResults.x+1,0, MATRIX_SIZE-1);
+						ex = constrain(shotResults.x-1,0, MATRIX_SIZE-1);
+					break;
+
+					case 3:
+						sx = constrain(shotResults.x+1,0, MATRIX_SIZE-1);
+						ex = constrain(shotResults.x-1,0, MATRIX_SIZE-1);
+						sy = constrain(shotResults.y+1,0, MATRIX_SIZE-1);
+						ey = constrain(shotResults.y-1,0, MATRIX_SIZE-1);
+					break;
+				}
+
+				display.draw_line(sx,sy,ex,ey, SHOT_COLOR );
+
+			} else {
+				// TODO : Anim on incoming 
+
+			}
+		}
+		break;
+
+		case BattleShipState::BS_MISS:
+		{
+			render_active_board(demoMode);
+
+			Dot d = shots_fired[shots_fired.size()-1];
+
+		}
+		break;
+
+		case BattleShipState::BS_HIT:
+		{
+			render_active_board(demoMode);
+
+			Dot d = shots_fired[shots_fired.size()-1];
+
+		}
+		break;
+
+		case BattleShipState::BS_DESTROYED:
+		{
+			render_active_board(demoMode);
+
+			Dot d = shots_fired[shots_fired.size()-1];
+
+		}
+		break;
+
+		case BattleShipState::BS_WAITING_REPLY:
 		case BattleShipState::BS_ACTIVE:
 		{
-			if ( my_turn ) 
-			{
-				// TODO : on my turn . shots_fired
-				for (Dot &shot : shots_fired) {
-					display.draw_dot(shot);
-				}
-
-				// show ships we killed
-				// * This will be sent from enemy when we kill a ship
-				for (SHIP &vessel : ships_kiiled) {
-					vessel.draw_destroyed();
-				}
-			} 
-			else
-			{
-				// TODO : on their turn . show my ships and over lay incomming_shots
-				for (SHIP &vessel : ships) {
-					vessel.draw();
-				}
-
-				if ( demoMode ) {
-					// demo is us firing on us
-					for (Dot &shot : shots_fired) {
-						display.draw_dot(shot);
-					}
-				} else {
-					// game mode is them firing on us
-					for (Dot &shot : incoming_shots) {
-						display.draw_dot(shot);
-					}
-				}
-
-				for (SHIP &vessel : ships) {
-					vessel.draw_destroyed();
-				}
-			}
+			render_active_board(demoMode);
 		}
 		break;
 
 		case BattleShipState::BS_ENDING:
 		{
 			// TODO : some form of animation??
+			if (get_state() == GameState::GAME_RUNNING) {
 
-			// Show Enemy Ships alive
-			// * This would be sent when the game is over from enemy
-			for (SHIP &vessel : ships) { // ships_survied
-				vessel.draw();
+				// Show thier ships that survived
+				for (SHIP &vessel : ships_survied) {
+					vessel.draw();
+				}
+
+				for (Dot &shot : shots_fired) {
+					display.draw_dot(shot);
+				}
+
+				// Anim killed ships
+				for (SHIP &vessel : ships_kiiled) {
+					vessel.draw_destroyed();
+				}
+
+			} else {
+
+				// Demo mode
+				for (SHIP &vessel : ships) {
+					vessel.draw();
+				}
+
+				for (Dot &shot : shots_fired) {
+					display.draw_dot(shot);
+				}
+
+				// Ships killed overlayed
+				for (SHIP &vessel : ships_kiiled) {
+					vessel.draw_destroyed();
+				}
 			}
 
-			for (Dot &shot : shots_fired) {
-				display.draw_dot(shot);
-			}
-
-			// Ships killed overlayed
-			for (SHIP &vessel : ships_kiiled) {
-				vessel.draw_destroyed();
-			}				
 		}
 		break;		
 	}
 
 }
 
+void BattleShip::render_active_board(bool demoMode)
+{
+	// TODO : make function
+	if ( my_turn ) 
+	{
+		// TODO : on my turn . shots_fired
+		for (Dot &shot : shots_fired) {
+			display.draw_dot(shot);
+		}
 
-uint8_t BattleShip::get_hits_left()
+		// show ships we killed
+		// * This will be sent from enemy when we kill a ship
+		for (SHIP &vessel : ships_kiiled) {
+			vessel.draw_destroyed();
+		}
+
+		// TODO : Draw anim for the last touch 
+	} 
+	else
+	{
+		// TODO : on their turn . show my ships and over lay incomming_shots
+		for (SHIP &vessel : ships) {
+			vessel.draw();
+		}
+
+		if ( demoMode ) {
+			// demo is us firing on us
+			for (Dot &shot : shots_fired) {
+				display.draw_dot(shot);
+			}
+
+		} else {
+			
+			// game mode is them firing on us
+			for (Dot &shot : incoming_shots) {
+				display.draw_dot(shot);
+			}
+		}
+
+		for (SHIP &vessel : ships) {
+			vessel.draw_destroyed();
+		}
+	}
+}
+
+uint8_t BattleShip::get_total_hits_left()
 {
 	uint8_t hitsLeft = 0;
 
@@ -764,92 +1104,43 @@ uint8_t BattleShip::get_hits_left()
 	}
 
 	return hitsLeft;
-
-/*	
-	// Check each winning combination
-	for (uint8_t i = 0; i < 8; ++i)
-	{
-		// If the initial position is not 0 (not empty)
-		if (board[winning_combinations[i][0]] != 0 &&
-			board[winning_combinations[i][0]] == board[winning_combinations[i][1]] &&
-			board[winning_combinations[i][1]] == board[winning_combinations[i][2]])
-		{
-			// Set the winning combo so we can draw a line through it
-			winning_combo = i;
-			audio_player.play_note(11, 11, 1, 2);
-			// Return the piece type in the first position - the winner (2 for cross, 1 for circle)
-			return board[winning_combinations[i][0]];
-		}
-	}
-
-	// If no moves are left - it's a draw, so we start again
-	if (moves_left == 0)
-		return 99;
-
-	// No winner yet
-	return 0;
-*/	
 }
 
 void BattleShip::start_game()
 {
-//	player_piece = (BoardPiece)piece;
+	info_printf("start_game: %d\n", my_turn);
+
+	if ((host_starts && is_hosting()) || (!host_starts && !is_hosting())) {
+		my_turn = true;
+		info_printf("start_game: MY TURN %d\n", my_turn);
+	} else {
+		my_turn = false;
+		info_printf("start_game: THIER TURN %d\n", my_turn);
+	}
+
+	change_game_state( BattleShipState::BS_ACTIVE );
 }
 
-/*
-void BattleShip::set_piece(uint8_t piece)
+bool BattleShip::check_end_game()
 {
-	if ((host_starts && !is_hosting()) || (!host_starts && is_hosting()))
-	{
-		player_piece = (BoardPiece)piece;
-
-		info_printf("Setting player piece to %d\n", (BoardPiece)piece);
-
-		display.clear();
-		set_state(GameState::GAME_RUNNING);
-	}
-}
-*/
-void BattleShip::check_end_game()
-{
-	if ( bs_state == BattleShipState::BS_ENDING ) {
-		return;
-	}
-
-	// we have no more ships to sink
-	if ( get_hits_left() <= 0 ) {
-
-		info_printf("Game Over\n");
-
-		audio_player.play_note(11, 11, 1, 2);
-
-		// TODO : set state to end game .. for now lets just reset
-		change_game_state( BattleShipState::BS_ENDING );
-		return;
-	}
-
-	// Error trapper
-	if ( available_shots.empty() ) {
-		// OMG .. how did we not kill all ships and have no shots ?
-		info_printf("ERROR NO SHOTS AND SHIP HITS %d Left\n", get_hits_left() );
-
-		// TODO : set state to end game .. for now lets just reset
-		change_game_state( BattleShipState::BS_ENDING );
-		return;
-	}
+	return ( get_total_hits_left() <= 0) ;
 }
 
 void BattleShip::end_game()
 {
-	reset_game();
+	info_printf("end_game Game State: %s - hits left %d\n", game_state_names[(uint8_t)get_state()], get_total_hits_left());
+	info_printf("end_game Battle State - %s - hits left %d\n", battleship_state_names[(uint8_t)bs_state], get_total_hits_left());
+
+	my_turn = false;
+
+	info_printf("Game Over\n");
+
+	change_game_state( BattleShipState::BS_ENDING );
 }
 
 void BattleShip::reset_game()
 {
 	// reset all the data so we can start again
-
-	// TODO : clear game stuff 
-
 	host_starts = !host_starts;
 	my_turn = false;
 
@@ -859,14 +1150,18 @@ void BattleShip::reset_game()
 
 void BattleShip::kill_game()
 {
-	info_printf("Kill game while in %s\n", game_state_names[(uint8_t) get_state() ]);
+	info_printf("kill_game while in %s\n", game_state_names[(uint8_t) get_state() ]);
+	info_printf("kill_game Battle State - %s\n", battleship_state_names[(uint8_t)bs_state]);
+//	esp_backtrace_print(2);
+
+	my_turn = false;
 
 	change_game_state( BattleShipState::BS_NONE );
 }
 
 void BattleShip::set_state(GameState s)
 {
-	info_printf("New State will be: %s\n", game_state_names[(uint8_t)s]);
+	info_printf("BATTLESHIP New State will be: %s\n", game_state_names[(uint8_t)s]);
 
 	if (s == GameState::GAME_RUNNING)
 	{
@@ -876,6 +1171,11 @@ void BattleShip::set_state(GameState s)
 	MultiplayerGame::set_state(s);
 }
 
+void BattleShip::send_data(BS_DataType _type)
+{
+	send_data(_type, 0, 0, 0, 0);
+}
+
 void BattleShip::send_command(BS_DataType _type, uint8_t _control)
 {
 	battleShip.send_data(_type, _control, 0, 0, 0);
@@ -883,6 +1183,8 @@ void BattleShip::send_command(BS_DataType _type, uint8_t _control)
 
 void BattleShip::send_data(BS_DataType _type, uint8_t _misc, uint8_t _x, uint8_t _y, uint8_t _id)
 {
+	info_printf("send_data: %d\n", _type);
+
 	bs_game_data_chunk_t data;
 	data.data.gtype = (uint8_t)GAME_ID;	// Set ID, This will come from Core at some point 
 	data.data.dtype = (uint8_t)_type;
@@ -890,6 +1192,8 @@ void BattleShip::send_data(BS_DataType _type, uint8_t _misc, uint8_t _x, uint8_t
 	data.data.data_y = _y;
 	data.data.data_id = _id;
 	data.data.data_misc = _misc;
+	data.data.data_total_hits = get_total_hits_left();
+
 	share_espnow.getInstance().send_gamedata(data.raw, Elements(data.raw));
 }
 
@@ -902,32 +1206,186 @@ bool BattleShip::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int da
 
 	bs_game_data_chunk_t *new_packet = reinterpret_cast<bs_game_data_chunk_t *>((uint8_t *)data);
 
-	info_print("Data: ");
-	for (int i = 0; i < data_len; i++)
+	info_print("Mac_addr: ");
+	for (int i = 0; i < 6; i++)
 	{
-		info_printf("%d ", (uint8_t)data[i]);
+		info_printf("%02X", mac_addr[i]);
+		if (i < 5)
+			info_print(":");
+	}
+/*
+	info_printf("onDataRecv Game State: %s\n", game_state_names[(uint8_t)get_state()]);
+	info_printf("onDataRecv Battle State - %s\n", battleship_state_names[(uint8_t)bs_state]);
+
+	info_printf("onDataRecv Data::gtype %d\n", new_packet->data.gtype);
+	info_printf("onDataRecv Data::dtype %d\n", new_packet->data.dtype);
+	info_printf("onDataRecv Data::data_x %d\n", new_packet->data.data_x);
+	info_printf("onDataRecv Data::data_y %d\n", new_packet->data.data_y);
+	info_printf("onDataRecv Data::data_id %d\n", new_packet->data.data_id);
+	info_printf("onDataRecv Data::data_misc %d\n", new_packet->data.data_misc);
+	info_printf("onDataRecv Data::data_total_hits %d\n", new_packet->data.data_total_hits);
+
+	info_printf("onDataRecv players_ready %d\n", players_ready);
+	info_printf("onDataRecv my_turn %d\n", my_turn);
+*/	
+
+	if ( my_turn ) 
+	{
+		// If my turn options
+		switch ( (BS_DataType) new_packet->data.dtype ) {
+			
+			case BS_DataType::SHOT_MISS:
+			{
+				info_printf("onDataRecv ACTIVE SHOT MISS : %d %d\n", new_packet->data.data_x, new_packet->data.data_y );
+				info_printf("shotResults : %d %d\n", shotResults.x, shotResults.y );
+
+				shotResults.color = SHOT_COLOR;
+			}
+			break;
+
+			case BS_DataType::SHOT_HIT:
+			{
+				info_printf("onDataRecv ACTIVE SHOT HIT : %d %d\n", new_packet->data.data_x, new_packet->data.data_y );
+				info_printf("shotResults : %d %d\n", shotResults.x, shotResults.y );
+
+				shotResults.color = HIT_COLOR;
+			}
+			break;
+
+			case BS_DataType::SHIP_KILLED:
+			{
+				info_printf("onDataRecv ACTIVE SHOT KILL[%d] : %d %d - hits [%d]\n",new_packet->data.data_id , new_packet->data.data_x, new_packet->data.data_y, new_packet->data.data_total_hits );
+				info_printf("shotResults : %d %d\n", shotResults.x, shotResults.y );
+
+				// Add to killed ship table for animation
+				int shipID = new_packet->data.data_id;
+				uint8_t shipLength = ((uint8_t) shipID)-1;
+
+				// Add a killed ship to vector
+				ships_kiiled.push_back( SHIP((ShipType)new_packet->data.data_id, shipLength, new_packet->data.data_x, new_packet->data.data_y,  new_packet->data.data_misc , display.Color(SHIP_COLOR[shipID][0], SHIP_COLOR[shipID][1], SHIP_COLOR[shipID][2]), true ) );
+
+				enemy_killed = ( new_packet->data.data_total_hits == 0 ) ? true : false;
+
+				shotResults.color = KILL_COLOR;
+			}
+			break;
+
+			case BS_DataType::TOGGLE_TURN:
+			{
+				info_printf("onDataRecv ACTIVE TOGGLE_TURN : %d\n", new_packet->data.data_misc );
+				my_turn = false;
+
+				change_game_state( BattleShipState::BS_ACTIVE );
+				info_printf("TURN_CHANGE my_turn: %d\n", my_turn);
+			}
+			break;
+
+			default:
+				info_printf("onDataRecv ACTIVE TYPE[%d] UNKOWN : %d\n", new_packet->data.dtype,my_turn );
+			break;
+		}
+
+	} else {
+
+		// If not my turn options
+		switch ( (BS_DataType) new_packet->data.dtype ) {
+			
+// 	 = 0,		// FUIURE to force them into this game mode
+			case BS_DataType::WANT_TO_PLAY:
+			{
+
+			}
+			break;
+
+			case BS_DataType::WAITING_TO_PLAY:
+			{
+				bool theyHost = (new_packet->data.data_misc&1) ? true : false;
+				bool theyStart = (new_packet->data.data_misc>>1)&1 ? true : false;
+
+				info_printf("onDataRecv WAITING_TO_PLAY They host %d , they starts %d \n", theyHost, theyStart);
+				info_printf("We host %d , we starts %d \n", is_hosting(), host_starts);
+
+				// ignore new peers, asborb data
+				if ( players_ready ) {
+					info_printf("onDataRecv Ready Players already full : %d\n", players_ready);
+					return true;
+				}
+
+				players_ready =  true;
+			}
+			break;
+
+			case BS_DataType::SHOT_FIRED:
+			{
+				info_printf("onDataRecv INACTIVE INCOMMING_SHOT  : %d %d\n", new_packet->data.data_x, new_packet->data.data_y );
+				shotResults = Dot(new_packet->data.data_x, new_packet->data.data_y, 0);
+				change_game_state( BattleShipState::BS_SHOOTING);
+			}
+			break;
+
+			case BS_DataType::TOGGLE_TURN:
+			{
+				info_printf("onDataRecv INACTIVE TOGGLE_TURN : %d %d\n", new_packet->data.data_total_hits, get_total_hits_left() );
+
+				if ( check_end_game() || new_packet->data.data_total_hits == 0 ) {
+
+					info_printf("Game Over\n");
+					change_game_state( BattleShipState::BS_ENDING );
+				} else {
+					my_turn = true;
+					change_game_state( BattleShipState::BS_ACTIVE );
+				}
+				info_printf("TURN_CHANGE my_turn: %d\n", my_turn);
+			}
+			break;
+
+			case BS_DataType::SHIP_ALIVE:
+			{
+				// Add to alive ships table for animation
+				int shipID = new_packet->data.data_id;
+				uint8_t shipLength = ((uint8_t) shipID)-1;
+
+				ships_survied.push_back( SHIP((ShipType)new_packet->data.data_id, shipLength, new_packet->data.data_x, new_packet->data.data_y,  new_packet->data.data_misc , display.Color(SHIP_COLOR[shipID][0], SHIP_COLOR[shipID][1], SHIP_COLOR[shipID][2]), false ) );
+
+				info_printf("SHIP_ALIVE my_turn: %d\n", my_turn);
+			}
+			break;
+
+			default:
+				info_printf("onDataRecv INACTIVE TYPE[%d] UNKOWN : %d\n", new_packet->data.dtype,my_turn );
+			break;
+		}
 	}
 
-	info_println();
-/*
-	if ((DataType)data[0] == DataType::SEND_MOVE || (DataType)data[0] == DataType::END_GAME)
-	{
-		update_position((uint8_t)data[1], (BoardPiece)(uint8_t)data[2]);
-	}
-	else 
-	{
-		set_piece((BoardPiece)(uint8_t)data[1]);
-	}
-*/	
+	info_printf("onDataRecv After Game State: %s\n", game_state_names[(uint8_t)get_state()]);
+	info_printf("onDataRecv After Battle State - %s\n", battleship_state_names[(uint8_t)bs_state]);
 
 	return true;
 }
 
+void BattleShip::end_turn()
+{
+	info_printf("end_turn Game State: %s - hits left %d\n", game_state_names[(uint8_t)get_state()], get_total_hits_left());
+	info_printf("end_turn Battle State - %s - hits left %d\n", battleship_state_names[(uint8_t)bs_state], get_total_hits_left());
+
+	my_turn = false;
+
+	// If not end, send player turn toggle with hits we have left
+	send_data(BS_DataType::TOGGLE_TURN,0,0,0,0);
+	change_game_state( BattleShipState::BS_ACTIVE );
+}
 
 void BattleShip::create_random_board()
 {
-	// Clear any previous ships
+	// Clear game data before we create a new board
 	ships.clear();
+	shots_fired.clear();
+	incoming_shots.clear();
+	ships_kiiled.clear();
+	ships_survied.clear();
+
+	enemy_killed = false;
+	my_turn = false;
 
 	noEdgeShips = !noEdgeShips;	// For now lets toggle to make it interesting
 	noTouchingShips = true;
