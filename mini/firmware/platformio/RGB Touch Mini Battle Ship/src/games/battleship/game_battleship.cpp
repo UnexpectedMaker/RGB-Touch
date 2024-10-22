@@ -113,9 +113,24 @@ void BattleShip::change_game_state(BattleShipState new_state)
 		case BattleShipState::BS_NONE:
 		{
 			my_turn = false;
-			players_ready = false;
 
 			set_state(GameState::GAME_WAITING);
+		}
+		break;
+
+
+		case BattleShipState::BS_ACTIVE:
+		{
+			// If in MP mode
+			if (share_espnow.getInstance().has_peer()) {
+				set_timeout(false);
+			}
+		}
+		break;
+
+		case BattleShipState::BS_WAITING_REPLY:
+		{
+			set_timeout(false);
 		}
 		break;
 
@@ -163,6 +178,8 @@ void BattleShip::change_game_state(BattleShipState new_state)
 				// Setup temp to be our counter before we lock the board
 				animLastms = millis();
 				animCounter = (int)(15000/500);	// every 500ms for 15seconds 
+
+				set_timeout(false);
 			}
 			else 
 			{
@@ -197,7 +214,7 @@ void BattleShip::change_game_state(BattleShipState new_state)
 //				animCounter = (int) ((MS_SECOND*10)/100);	// every 100ms for 10seconds
 			}
 
-			info_printf("BS_SHOOTING: %d %d\n", animCounter, animLastms);
+//			info_printf("BS_SHOOTING: %d %d\n", animCounter, animLastms);
 
 			set_timeout(false);
 		}
@@ -216,7 +233,7 @@ void BattleShip::change_game_state(BattleShipState new_state)
 //				animCounter = (int) ((MS_SECOND*10)/100);	// every 100ms for 10seconds
 			}
 
-			info_printf("BS_MISS: %d %d\n", animCounter, animLastms);
+//			info_printf("BS_MISS: %d %d\n", animCounter, animLastms);
 
 			set_timeout(false);
 		}
@@ -235,7 +252,7 @@ void BattleShip::change_game_state(BattleShipState new_state)
 //				animCounter = (int) ((MS_SECOND*10)/100);	// every 100ms for 10seconds
 			}
 
-			info_printf("BS_HIT: %d %d\n", animCounter, animLastms);
+//			info_printf("BS_HIT: %d %d\n", animCounter, animLastms);
 
 			set_timeout(false);
 		}
@@ -254,7 +271,7 @@ void BattleShip::change_game_state(BattleShipState new_state)
 //				animCounter = (int) ((MS_SECOND*10)/100);	// every 100ms for 10seconds
 			}
 
-			info_printf("BS_DESTROYED: %d %d\n", animCounter, animLastms);
+//			info_printf("BS_DESTROYED: %d %d\n", animCounter, animLastms);
 
 			set_timeout(false);
 		}
@@ -268,23 +285,31 @@ void BattleShip::change_game_state(BattleShipState new_state)
 
 			if (get_state() == GameState::GAME_RUNNING) {
 
-				audio_player.play_wav_queue("gameover");
-
 				// Sent any ships that are alive
 				for (SHIP &vessel : ships) {
 
 					if ( !vessel.isDestroyed() ) {
+						// Slow deliver the alive ships
+						delay(100);
 						Dot d = vessel.getStartPos();
 						send_data(BS_DataType::SHIP_ALIVE,vessel.getDirection(), d.x, d.y, vessel.getID());
 					}
 				}
 
 				// This will mark the battle as ended , so only send if we have ship
-				send_data(BS_DataType::TOGGLE_TURN);
+				send_command(BS_DataType::TOGGLE_TURN);
+
+				audio_player.play_wav_queue("gameover");
 			}
 
+
 			animLastms = millis();
-			animCounter = (int) ((MS_SECOND*10)/MS_SECOND);	// every second for 10seconds
+			animCounter = timedOutReached ? 1 : (int) ((MS_SECOND*10)/MS_SECOND);
+
+			// for next matchup swap who starts
+//			host_starts = !host_starts;
+
+			info_printf("BS_ENDING: %d\n", timedOutReached);
 		}
 		break;
 	}
@@ -386,66 +411,6 @@ enum BS_DataType : uint8_t
 		}
 	}
 }
-/*
-bool BattleShip::set_position(uint8_t position, uint8_t piece)
-{
-	if (!my_turn)
-	{
-		audio_player.play_note(0, 0, 1, 0.2);
-		return false;
-	}
-
-	if (position < 9)
-	{
-		if (board[position] == (uint8_t)BoardPiece::EMPTY)
-		{
-			board[position] = piece;
-			pos_fader[position] = 255;
-
-			moves_left--;
-
-			winning_player = check_winner();
-
-			if (winning_player > 0)
-			{
-				send_data(DataType::END_GAME, position, piece);
-			}
-			else
-			{
-				send_data(DataType::SEND_MOVE, position, piece);
-			}
-
-			my_turn = false;
-
-			return true;
-		}
-	}
-
-	audio_player.play_note(0, 0, 1, 0.2);
-	return false;
-}
-*/
-
-/*
-void BattleShip::update_position(uint8_t position, uint8_t piece)
-{
-	if (position < 9)
-	{
-		if (board[position] == (uint8_t)BoardPiece::EMPTY)
-		{
-			board[position] = (uint8_t)piece;
-			pos_fader[position] = 0;
-
-			moves_left--;
-
-			winning_player = check_winner();
-
-			if (winning_player == 0)
-				my_turn = true;
-		}
-	}
-}
-*/
 
 void BattleShip::update_loop()
 {
@@ -625,36 +590,21 @@ void BattleShip::update_loop()
 		}
 
 	} else if (get_state() == GameState::GAME_RUNNING) {
-
-
+/*
 		// Lets handle no responses in a suitable time
-		if ( nextTimeout > 0 && millis() >= nextTimeout ) {
+		if ( (nextTimeout > 0) && (nextTimeout-millis() < 0) ) {
 
-			timeout_game();
-
-			info_printf("GAME_RUNNING TIMEOUT REACH\n");
-
-			return;
+			if ( bs_state != BattleShipState::BS_ENDING ) {
+				info_printf("GAME_RUNNING TIMEOUT REACH %d %d\n",nextTimeout ,(unsigned long) (nextTimeout - millis())/MS_SECOND);
+				timeout_game();
+				return;
+			}
 		}
-
+*/
 
 
 	} 
 
-/* TODO : is this needed ?
-
-	{
-		if (!share_espnow.getInstance().has_peer()) {
-//			info_printf("GAME STATE NO PEERS: %s\n", game_state_names[(uint8_t)get_state()]);
-		}
-
-		// 
-		if ( bs_state == BattleShipState::BS_NONE ) {
-			info_printf("RUNNING UPDATE LOOP - BS_BOARD_SETUP\n");
-			change_game_state( BattleShipState::BS_BOARD_SETUP );		
-		}
-	}
-*/
 	update_board_state();
 }
 
@@ -844,6 +794,7 @@ void BattleShip::update_board_state()
 
 			if ( enemy_killed ) {
 
+				info_printf("BS_DESTROYED: end_gamen");
 				end_game();
 	//			change_game_state( BattleShipState::BS_ACTIVE );
 
@@ -899,6 +850,12 @@ SHIP* BattleShip::CheckShipHit(int x , int y, bool splash)
 	}
 
 	return nullptr;
+}
+
+
+void BattleShip::display_icon()
+{
+	// Future .. 
 }
 
 void BattleShip::display_game()
@@ -1137,6 +1094,8 @@ void BattleShip::start_game()
 	}
 
 	change_game_state( BattleShipState::BS_ACTIVE );
+
+	set_timeout(false);
 }
 
 bool BattleShip::check_end_game()
@@ -1146,8 +1105,8 @@ bool BattleShip::check_end_game()
 
 void BattleShip::end_game()
 {
-	info_printf("end_game Game State: %s - hits left %d\n", game_state_names[(uint8_t)get_state()], get_total_hits_left());
-	info_printf("end_game Battle State - %s - hits left %d\n", battleship_state_names[(uint8_t)bs_state], get_total_hits_left());
+	info_printf("end_game Game State: %s - hits left %d [%d]\n", game_state_names[(uint8_t)get_state()], get_total_hits_left(), enemy_killed);
+	info_printf("end_game Battle State - %s - hits left %d [%d]\n", battleship_state_names[(uint8_t)bs_state], get_total_hits_left(), enemy_killed);
 
 	my_turn = false;
 
@@ -1189,12 +1148,12 @@ void BattleShip::set_state(GameState s)
 	MultiplayerGame::set_state(s);
 }
 
-void BattleShip::send_data(BS_DataType _type)
+void BattleShip::send_command(BS_DataType _type)
 {
 	send_data(_type, 0, 0, 0, 0);
 }
 
-void BattleShip::send_command(BS_DataType _type, uint8_t _control)
+void BattleShip::send_control(BS_DataType _type, uint8_t _control)
 {
 	battleShip.send_data(_type, _control, 0, 0, 0);
 }
@@ -1213,6 +1172,8 @@ void BattleShip::send_data(BS_DataType _type, uint8_t _misc, uint8_t _x, uint8_t
 	data.data.data_total_hits = get_total_hits_left();
 
 	share_espnow.getInstance().send_gamedata(data.raw, Elements(data.raw));
+
+	info_printf("end send_data: %d\n", _type);
 }
 
 bool BattleShip::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len)
@@ -1231,7 +1192,7 @@ bool BattleShip::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int da
 		if (i < 5)
 			info_print(":");
 	}
-/*
+
 	info_printf("onDataRecv Game State: %s\n", game_state_names[(uint8_t)get_state()]);
 	info_printf("onDataRecv Battle State - %s\n", battleship_state_names[(uint8_t)bs_state]);
 
@@ -1245,7 +1206,7 @@ bool BattleShip::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int da
 
 	info_printf("onDataRecv players_ready %d\n", players_ready);
 	info_printf("onDataRecv my_turn %d\n", my_turn);
-*/	
+	info_printf("onDataRecv timeout %d\n", (nextTimeout - millis())/MS_SECOND);
 
 	if ( my_turn ) 
 	{
@@ -1293,8 +1254,15 @@ bool BattleShip::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int da
 				info_printf("onDataRecv ACTIVE TOGGLE_TURN : %d\n", new_packet->data.data_misc );
 				my_turn = false;
 
-				change_game_state( BattleShipState::BS_ACTIVE );
-				info_printf("TURN_CHANGE my_turn: %d\n", my_turn);
+				if ( new_packet->data.data_misc ) {
+
+					info_printf("Force Game Over\n");
+					change_game_state( BattleShipState::BS_ENDING );
+
+				} else {
+					change_game_state( BattleShipState::BS_ACTIVE );
+					info_printf("TURN_CHANGE my_turn: %d\n", my_turn);			
+				}
 			}
 			break;
 
@@ -1345,7 +1313,10 @@ bool BattleShip::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int da
 			{
 				info_printf("onDataRecv INACTIVE TOGGLE_TURN : %d %d\n", new_packet->data.data_total_hits, get_total_hits_left() );
 
-				if ( check_end_game() || new_packet->data.data_total_hits == 0 ) {
+				if ( new_packet->data.data_misc ) {
+					info_printf("Force Game Over\n");
+					change_game_state( BattleShipState::BS_ENDING );
+				} else if ( check_end_game() || new_packet->data.data_total_hits == 0 ) {
 
 					info_printf("Game Over\n");
 					change_game_state( BattleShipState::BS_ENDING );
@@ -1389,7 +1360,7 @@ void BattleShip::end_turn()
 	my_turn = false;
 
 	// If not end, send player turn toggle with hits we have left
-	send_data(BS_DataType::TOGGLE_TURN,0,0,0,0);
+	send_command(BS_DataType::TOGGLE_TURN);
 	change_game_state( BattleShipState::BS_ACTIVE );
 }
 
@@ -1402,6 +1373,7 @@ void BattleShip::create_random_board()
 	ships_kiiled.clear();
 	ships_survied.clear();
 
+	timedOutReached = false;
 	enemy_killed = false;
 	my_turn = false;
 
@@ -1485,6 +1457,9 @@ void BattleShip::create_random_board()
 void BattleShip::timeout_game()
 {
 	// Kill peers ?
+	info_printf("timeout_game end_gamen");
+
+	timedOutReached = true;
 
 	end_game();
 
@@ -1494,9 +1469,8 @@ void BattleShip::timeout_game()
 
 void BattleShip::set_timeout(bool reset)
 {
-	nextTimeout = reset ? 0 : millis()+MAX_TIMEOUT;
-
-	info_printf("set_timeout %d\n", nextTimeout);
+	nextTimeout = reset ? 0 : (unsigned long) millis()+MAX_TIMEOUT;
+	info_printf("onDataRecv timeout[%d] %d\n", reset, nextTimeout ? (unsigned long) (nextTimeout - millis())/MS_SECOND : 0);
 }
 
 void BattleShip::set_hosting(bool state)
@@ -1509,6 +1483,20 @@ void BattleShip::set_hosting(bool state)
 	battleShip.kill_game();
 
 	audio_player.play_wav_queue("battleship");
+}
+
+void BattleShip::peer_added(const uint8_t *mac_addr)
+{
+	MultiplayerGame::peer_added(mac_addr);
+
+	info_printf("BattleShip Peer Added\n");
+}
+
+void BattleShip::peer_removed(const uint8_t *mac_addr)
+{
+	MultiplayerGame::peer_removed(mac_addr);
+
+	info_printf("BattleShip Peer Removed\n");
 }
 
 SFX BattleShip::get_game_wave_file(const char *wav_name)

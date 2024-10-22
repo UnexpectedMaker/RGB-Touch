@@ -127,6 +127,8 @@ void Share_ESPNOW::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int 
 				} 
 				else 
 				{
+					game->peer_added(mac_addr);
+
 					audio_player.play_wav("found_peer");
 					info_printf("my calc? %d, peer calc? %d\n", my_calc_value, peer_calc_value);
 					game->set_hosting(my_calc_value > peer_calc_value);

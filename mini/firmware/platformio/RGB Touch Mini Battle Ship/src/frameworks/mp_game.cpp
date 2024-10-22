@@ -40,5 +40,15 @@ void MultiplayerGame::set_hosting(bool state)
 	set_state(GameState::GAME_MENU);
 }
 
+void MultiplayerGame::peer_added(const uint8_t *mac_addr)
+{
+
+}
+
+void MultiplayerGame::peer_removed(const uint8_t *mac_addr)
+{
+
+}
+
 // Base class pointer , extended class will have override functionality
 MultiplayerGame *game;

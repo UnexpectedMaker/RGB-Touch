@@ -18,7 +18,7 @@ const uint16_t KILL_COLOR = RGB_COLOR(0xFF,0x00,0x00);
 const int DEBONCE = 100;					// 1/10 of a second 
 const int MS_SECOND = 1000;	
 const int AI_LOOK_BACK = 5;					// Look back 5 * ai level (easy/meduim/hard)
-const int MAX_TIMEOUT = (15*MS_SECOND);		// 15 seconds , if we dont get a play or battle we will re-cycle
+const int MAX_TIMEOUT = (60*MS_SECOND);		// 60 seconds , if we dont get a play or battle we will re-cycle
 
 const ShipType FLEET[] = {	// Reverse to give bigger ships a chance
 	AIRCRAFT,
@@ -117,11 +117,13 @@ class BattleShip : public MultiplayerGame
 		// Core overrides ?
 		void set_state(GameState s) override;		
 	   	void display_game() override;
+		void display_icon() override;
 		bool touched_board(uint8_t x, uint8_t y) override;
     	void update_loop() override;
 		void kill_game() override;
 		void set_hosting(bool state) override;
-
+		void peer_added(const uint8_t *mac_addr) override;
+		void peer_removed(const uint8_t *mac_addr) override;
 		bool onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len) override;
 		SFX get_game_wave_file(const char *wav_name) override;
 
@@ -140,6 +142,7 @@ class BattleShip : public MultiplayerGame
 
 		bool noEdgeShips = false;		// Ships are not allowed on edge if true, toggle on board create
 		bool noTouchingShips = false;	// Ships cant touch if true
+		bool timedOutReached = false;
 
 		std::vector<Point> lastTouch;
 
@@ -159,10 +162,10 @@ class BattleShip : public MultiplayerGame
 		int animLastms = 0;
 		int animCounter = 0;
 		Dot shotResults;
-		int nextTimeout = 0;
+		long nextTimeout = 0;
 
 		// Temp vars 
-		int tempLastms = 0;
+		long tempLastms = 0;
 		int tempCounter = 0;
 
 		// 
@@ -172,12 +175,12 @@ class BattleShip : public MultiplayerGame
 		uint8_t get_total_hits_left();
 
 		//
-		void send_data(BS_DataType _type);
-		void send_command(BS_DataType _type, uint8_t _control);
+		void send_command(BS_DataType _type);
+		void send_control(BS_DataType _type, uint8_t _control);
 		void send_data(BS_DataType _type, uint8_t _misc, uint8_t _x, uint8_t _y, uint8_t _id);
 
 		// Debounce for no touch process , move to touch process to handle release
-		int lastPressedTime = 0;
+		long lastPressedTime = 0;
 		void process_last_touch(uint8_t x, uint8_t y);
 		
 		//
