@@ -15,10 +15,10 @@ const uint16_t SHOT_COLOR = RGB_COLOR(0x7F,0x7F,0x7F);
 const uint16_t HIT_COLOR = RGB_COLOR(0xCF,0x00,0x00);
 const uint16_t KILL_COLOR = RGB_COLOR(0xFF,0x00,0x00);
 
-const int DEBONCE = 100;					// 1/10 of a second 
+const int DEBONCE = 100;			// 1/10 of a second 
 const int MS_SECOND = 1000;	
-const int AI_LOOK_BACK = 5;					// Look back 5 * ai level (easy/meduim/hard)
-const int MAX_TIMEOUT = (60*MS_SECOND);		// 60 seconds , if we dont get a play or battle we will re-cycle
+const int AI_LOOK_BACK = 5;			// Look back 5 * ai level (easy/meduim/hard)
+const int MAX_TIMEOUT = 60;			// 60 seconds , if we dont get a play or battle we will re-cycle
 
 const ShipType FLEET[] = {	// Reverse to give bigger ships a chance
 	AIRCRAFT,
@@ -142,7 +142,6 @@ class BattleShip : public MultiplayerGame
 
 		bool noEdgeShips = false;		// Ships are not allowed on edge if true, toggle on board create
 		bool noTouchingShips = false;	// Ships cant touch if true
-		bool timedOutReached = false;
 
 		std::vector<Point> lastTouch;
 
@@ -158,11 +157,15 @@ class BattleShip : public MultiplayerGame
 		std::vector<SHIP> ships_kiiled;
 		std::vector<SHIP> ships_survied;
 
-		//
+		// Anim only vars, not to be consider perm for any state
 		int animLastms = 0;
 		int animCounter = 0;
 		Dot shotResults;
-		long nextTimeout = 0;
+
+		// Timeout counter , no reply with opponent will trigger end game (FUTURE US WILL MAKE US WIN)
+		int timeoutCounter = 0;
+		long lastTimeoutms = 0;
+		bool timedOutReached = false;
 
 		// Temp vars 
 		long tempLastms = 0;

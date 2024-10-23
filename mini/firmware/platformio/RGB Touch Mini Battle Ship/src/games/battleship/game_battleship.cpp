@@ -32,7 +32,7 @@ Peer lost
 #include "audio/voice/gameover.h"
 #include "audio/voice/battleship.h"
 
-//#include "esp_debug_helpers.h"
+#include "esp_debug_helpers.h"
 //	esp_backtrace_print(2);
 
 BattleShip battleShip;	// Create instance , so we can notify core
@@ -94,8 +94,9 @@ bool BattleShip::touched_board(uint8_t x, uint8_t y)
 // Change state , logic and clear
 void BattleShip::change_game_state(BattleShipState new_state)
 {
-	info_printf("change_game_state FROM : %s\n", battleship_state_names[(uint8_t)bs_state]);
+	info_printf("change_game_state FROM : %s to %s\n", battleship_state_names[(uint8_t)bs_state], battleship_state_names[(uint8_t)new_state]);
 	info_printf("change_game_state State: %s\n", game_state_names[(uint8_t)get_state()]);
+	esp_backtrace_print(2);
 
 	if ( bs_state == new_state ) {
 		info_printf(" ERROR ALREADY on Battle State : %s\n", battleship_state_names[(uint8_t)bs_state]);
@@ -104,8 +105,6 @@ void BattleShip::change_game_state(BattleShipState new_state)
 
 	// Always clear timeout on state change
 	set_timeout(true);
-
-//	esp_backtrace_print(2);
 
 	switch( new_state ) {
 
@@ -178,8 +177,6 @@ void BattleShip::change_game_state(BattleShipState new_state)
 				// Setup temp to be our counter before we lock the board
 				animLastms = millis();
 				animCounter = (int)(15000/500);	// every 500ms for 15seconds 
-
-				set_timeout(false);
 			}
 			else 
 			{
@@ -216,7 +213,6 @@ void BattleShip::change_game_state(BattleShipState new_state)
 
 //			info_printf("BS_SHOOTING: %d %d\n", animCounter, animLastms);
 
-			set_timeout(false);
 		}
 		break;
 
@@ -235,7 +231,6 @@ void BattleShip::change_game_state(BattleShipState new_state)
 
 //			info_printf("BS_MISS: %d %d\n", animCounter, animLastms);
 
-			set_timeout(false);
 		}
 		break;
 
@@ -254,7 +249,6 @@ void BattleShip::change_game_state(BattleShipState new_state)
 
 //			info_printf("BS_HIT: %d %d\n", animCounter, animLastms);
 
-			set_timeout(false);
 		}
 		break;
 
@@ -273,7 +267,6 @@ void BattleShip::change_game_state(BattleShipState new_state)
 
 //			info_printf("BS_DESTROYED: %d %d\n", animCounter, animLastms);
 
-			set_timeout(false);
 		}
 		break;
 
@@ -283,7 +276,14 @@ void BattleShip::change_game_state(BattleShipState new_state)
 
 //			info_printf("BS_ENDING: %d %d\n", animCounter, animLastms);
 
-			if (get_state() == GameState::GAME_RUNNING) {
+			if ( timedOutReached ) {
+
+				// This will mark the battle as ended , so only send if we have ship
+				send_command(BS_DataType::TOGGLE_TURN);
+
+				audio_player.play_wav_queue("gameover");
+
+			} else if (get_state() == GameState::GAME_RUNNING) {
 
 				// Sent any ships that are alive
 				for (SHIP &vessel : ships) {
@@ -590,19 +590,31 @@ void BattleShip::update_loop()
 		}
 
 	} else if (get_state() == GameState::GAME_RUNNING) {
-/*
-		// Lets handle no responses in a suitable time
-		if ( (nextTimeout > 0) && (nextTimeout-millis() < 0) ) {
 
-			if ( bs_state != BattleShipState::BS_ENDING ) {
-				info_printf("GAME_RUNNING TIMEOUT REACH %d %d\n",nextTimeout ,(unsigned long) (nextTimeout - millis())/MS_SECOND);
-				timeout_game();
-				return;
+		if (timeoutCounter > 0 ) {
+
+			if ( millis() - lastTimeoutms >= MS_SECOND ) {
+				lastTimeoutms = millis();
+
+				// Send waitin for enemy incase they joined later, every second
+				if ( bs_state == BattleShipState::BS_WAITING_ENEMY ) {
+					send_data(BS_DataType::WAITING_TO_PLAY,(host_starts<<1)|(is_hosting()),0,0,0);
+//					info_printf("RE SEND WAITING_TO_PLAY %d , starts %d \n", is_hosting(), host_starts);
+				}
+
+				timeoutCounter--;
+//				info_printf("TIMEOUT %d\n",timeoutCounter);
+
+				if ( timeoutCounter == 0 ) {
+
+					if ( bs_state != BattleShipState::BS_ENDING ) {
+						info_printf("GAME_RUNNING TIMEOUT REACH\n");
+						timeout_game();
+						return;
+					}
+				}
 			}
 		}
-*/
-
-
 	} 
 
 	update_board_state();
@@ -1206,7 +1218,7 @@ bool BattleShip::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int da
 
 	info_printf("onDataRecv players_ready %d\n", players_ready);
 	info_printf("onDataRecv my_turn %d\n", my_turn);
-	info_printf("onDataRecv timeout %d\n", (nextTimeout - millis())/MS_SECOND);
+	info_printf("onDataRecv timeout %d\n", timeoutCounter);
 
 	if ( my_turn ) 
 	{
@@ -1469,8 +1481,8 @@ void BattleShip::timeout_game()
 
 void BattleShip::set_timeout(bool reset)
 {
-	nextTimeout = reset ? 0 : (unsigned long) millis()+MAX_TIMEOUT;
-	info_printf("onDataRecv timeout[%d] %d\n", reset, nextTimeout ? (unsigned long) (nextTimeout - millis())/MS_SECOND : 0);
+	timeoutCounter = reset ? 0 : MAX_TIMEOUT;
+	info_printf("onDataRecv timeout[%d] %d\n", reset, timeoutCounter );
 }
 
 void BattleShip::set_hosting(bool state)
