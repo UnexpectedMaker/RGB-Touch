@@ -18,7 +18,7 @@ const uint16_t KILL_COLOR = RGB_COLOR(0xFF,0x00,0x00);
 const int DEBONCE = 100;			// 1/10 of a second 
 const int MS_SECOND = 1000;	
 const int AI_LOOK_BACK = 5;			// Look back 5 * ai level (easy/meduim/hard)
-const int MAX_TIMEOUT = 60;			// 60 seconds , if we dont get a play or battle we will re-cycle
+const int MAX_TIMEOUT = 30;			// 30 seconds , if we dont get a play or battle we will re-cycle
 
 const ShipType FLEET[] = {	// Reverse to give bigger ships a chance
 	AIRCRAFT,
@@ -82,6 +82,8 @@ enum BS_DataType : uint8_t
 	// End of game winner sends ships not destroyed
 
 	SHIP_ALIVE = 7,
+
+	TIMED_OUT = 8,		// Sender timed out, we should stop what we doing and reset back to no battle
 };
 
 struct bs_game_data_t
@@ -174,7 +176,6 @@ class BattleShip : public MultiplayerGame
 		// 
 		void start_game();
 		void reset_game();
-		void end_game();	
 		uint8_t get_total_hits_left();
 
 		//
