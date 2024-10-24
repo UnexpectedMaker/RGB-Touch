@@ -279,9 +279,6 @@ void BattleShip::change_game_state(BattleShipState new_state)
 
 			if ( timedOutReached ) {
 
-				// This will mark the battle as ended , so only send if we have ship
-				send_command(BS_DataType::TIMED_OUT);
-
 				audio_player.play_wav_queue("gameover");
 
 			} else if (get_state() == GameState::GAME_RUNNING) {
@@ -1266,7 +1263,7 @@ bool BattleShip::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int da
 
 				// If we are waiting and they toggled turn they timed out
 				info_printf("Re Init Game Over\n");
-				kill_game();
+				timeout_game();
 			break;
 
 			default:
@@ -1287,6 +1284,7 @@ bool BattleShip::onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int da
 			break;
 
 			case BS_DataType::WAITING_TO_PLAY:
+
 			{
 				bool theyHost = (new_packet->data.data_misc&1) ? true : false;
 				bool theyStart = (new_packet->data.data_misc>>1)&1 ? true : false;
@@ -1454,40 +1452,43 @@ void BattleShip::create_random_board()
 			}
 		
 			bool touching = false;
-			for (SHIP &vessel : ships) {
-				touching = vessel.lineIntersect( startX, startY, shipLength, addX > addY, noTouchingShips );
+			
+			// If we dont allow touching
+			if ( noTouchingShips ) {
 
-				if ( touching ) {
-					break;
+				// Find if this ship will touch any others with expanded boxes
+				for (SHIP &vessel : ships) {
+					touching = vessel.lineIntersect( startX, startY, shipLength, addX > addY, noTouchingShips );
+					if ( touching ) {
+						break;
+					}
 				}
 			}
 
 
-			if ( touching ) {
-				info_printf(" touching ship x: %d, y: %d, len: %d\n", startX, startY, shipLength);
-				continue;
+			if ( !touching ) {
+				info_printf(" ship %d, x: %d, y: %d, len: %d\n",shipID , startX, startY, shipLength);					
+
+				ships.push_back( SHIP(shipID,shipLength,startX, startY,  addX > addY , display.Color(SHIP_COLOR[shipID][0], SHIP_COLOR[shipID][1], SHIP_COLOR[shipID][2])) );
+
+				shipAfloat = true;
 			}
-
-			info_printf(" ship %d, x: %d, y: %d, len: %d\n",shipID , startX, startY, shipLength);					
-
-			ships.push_back( SHIP(shipID,shipLength,startX, startY,  addX > addY , display.Color(SHIP_COLOR[shipID][0], SHIP_COLOR[shipID][1], SHIP_COLOR[shipID][2])) );
-
-			shipAfloat = true;
 		}
 	}
 }
 
-
 void BattleShip::timeout_game()
 {
 	// Kill peers ?
-	info_printf("timeout_game end_gamen");
+	info_printf("timeout_game\n");
 
 	if (get_state() <= GameState::GAME_MENU && bs_state <= BattleShipState::BS_BOARD_SETUP ) {
 		return;
 	}
 
 	timedOutReached = true;
+
+	send_command(BS_DataType::TIMED_OUT);
 
 	kill_game();
 
