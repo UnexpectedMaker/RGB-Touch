@@ -179,8 +179,9 @@ void BattleShip::change_game_state(BattleShipState new_state)
 			}
 			else 
 			{
-				// Demo go straight to BS Active 
+				// Demo go straight to BS Active while waiting
 				new_state = BattleShipState::BS_ACTIVE;
+				set_state(GameState::GAME_WAITING);
 			}
 		}
 		break;
