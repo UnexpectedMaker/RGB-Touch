@@ -190,7 +190,11 @@ void loop()
 	// We dont want to mess with the brightness and display power while we are editing the brightness settings
 	if (!rgbtouch.check_mode(Modes::SETTINGS_EDIT) || rgbtouch.settings_mode != SettingsModes::SET_BRIGHTNESS)
 	{
-		if (millis() - touch.last_touch > rgbtouch.get_sleep_timer(1))
+		// Allow game to decide we sleep
+		if ( game && game->control_sleep() ) {
+
+		} 
+		else if (millis() - touch.last_touch > rgbtouch.get_sleep_timer(1))
 		{
 			// We need to shut down nicely here and go into deep sleep
 			display.set_brightness(0, false);

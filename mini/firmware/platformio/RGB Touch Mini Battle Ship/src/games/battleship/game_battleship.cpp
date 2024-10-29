@@ -116,7 +116,6 @@ void BattleShip::change_game_state(BattleShipState new_state)
 		}
 		break;
 
-
 		case BattleShipState::BS_ACTIVE:
 		{
 			// If in MP mode
@@ -1538,4 +1537,16 @@ SFX BattleShip::get_game_wave_file(const char *wav_name)
 	}
 
 	return file;
+}
+
+bool BattleShip::control_sleep()
+{
+	// Dim board after standard time if not touched , else keep alive
+	if (millis() - touch.last_touch > rgbtouch.get_sleep_timer(0))
+	{
+		// We need to dim the screen now as it's not been touched for 10 seconds
+		display.set_brightness(settings.config.brightness / 2, false);
+	}
+
+	return true;
 }
