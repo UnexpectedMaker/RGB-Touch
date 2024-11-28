@@ -64,6 +64,7 @@ class MultiplayerGame
 		virtual void set_hosting(bool state);
 		virtual void peer_added(const uint8_t *mac_addr);
 		virtual void peer_removed(const uint8_t *mac_addr);
+		virtual bool control_sleep();
 
 	    // Virtual functions to be overriden by game class
 		virtual bool touched_board(uint8_t x, uint8_t y) = 0;

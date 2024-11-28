@@ -50,5 +50,11 @@ void MultiplayerGame::peer_removed(const uint8_t *mac_addr)
 
 }
 
+bool MultiplayerGame::control_sleep()
+{
+	return false;
+}
+
+
 // Base class pointer , extended class will have override functionality
 MultiplayerGame *game;

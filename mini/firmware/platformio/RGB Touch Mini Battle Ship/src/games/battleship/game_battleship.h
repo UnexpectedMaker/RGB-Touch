@@ -107,7 +107,168 @@ typedef union
 	uint8_t raw[sizeof(bs_game_data_t)];
 } bs_game_data_chunk_t;
 
+/*
+// Move to own header and class
+class BATTLESHIP_AI // FUTURE US will extend from a base AI ClASS
+{
+		// Kinda AI ish thinking 
+		int ai_level = 3;
+		std::vector<Dot> available_shots;
 
+		long tempLastms = 0;
+		int tempCounter = 0;
+
+	    BATTLESHIP_AI* ptrToSelf;
+public:		
+		BATTLESHIP_AI() 
+		{
+			ai_level = ( std::rand() % 3 ) + 1;
+
+			tempLastms = millis();
+
+			// Build possible shots
+			available_shots.clear();
+			for ( u_int y=0; y < MATRIX_SIZE; y++) {
+				for ( u_int x=0; x < MATRIX_SIZE; x++) {
+
+					Dot d = Dot(x, y, 0);
+					available_shots.push_back(d);
+				}
+			}
+
+			// Lets Randomize the possible shots list - Make this based on AI Level
+			for (u_int l = 0; l < ai_level; l++) {
+				for (u_int i = 0; i < available_shots.size()-1; i++) {
+					int target = i + 1 + rand() % (available_shots.size() - i - 1);
+					std::swap( available_shots[i], available_shots[target] );
+				}
+			}			
+		};
+
+		~BATTLESHIP_AI() {};
+
+		void update_loop() {
+
+			if ( millis() - tempLastms >= 500 ) {
+
+			}
+
+			// 1/2 a Second fire rate
+			if ( millis() - tempLastms >= 500 ) {
+				tempLastms = millis();
+
+				// TODO : improve by 
+				// * Knowing which direction caused a chain hit and carry in that direction
+				// * Using ships destroyed to know whats left, thus only looking where those ships can fit 
+				Dot shot = available_shots.back();
+//				info_printf("Next Shot x: %d, y: %d\n", shot.x, shot.y );
+				// Do not look back if we are empty or last hit was a kill
+				if ( shot.color != KILL_COLOR && !shots_fired.empty() ) 
+				{
+					// Cycle last "X" to detect if one was a hit with open neighours
+					int aiLevel = (AI_LOOK_BACK*ai_level);
+					int lookBackTo = constrain( (int) shots_fired.size()-aiLevel, 0, shots_fired.size() - 1);
+
+//					info_printf("Look back : %d from %d\n", lookBackTo , shots_fired.size()-1 );
+
+					for( u_int checkShot = shots_fired.size()-1; checkShot >= lookBackTo;  checkShot-- ) 
+					{
+						Dot oldShot = shots_fired[checkShot];
+
+						// If no hit, next option
+						if ( oldShot.color == SHOT_COLOR ) {
+//							info_printf("Shot Past[%d] x: %d, y: %d\n",checkShot, oldShot.x, oldShot.y );
+							continue;
+						}
+
+						// if was a kill, keep it to the pulled
+						if ( oldShot.color == KILL_COLOR ) {
+//							info_printf("Kill Past[%d] x: %d, y: %d\n",checkShot, oldShot.x, oldShot.y );
+							break;
+						}
+
+						std::vector<int> connectedIndex;
+//						info_printf("Find Neighbours[%d] x: %d, y: %d\n",checkShot , oldShot.x, oldShot.y );
+
+						// Build a list of connected options still available
+						for (auto i = 0; i < available_shots.size(); i++)
+						{
+							// TODO : only allow matches in a direction we discovered 
+
+							if ( available_shots[i].y == oldShot.y ) 
+							{
+								if (available_shots[i].x == oldShot.x-1) {
+									connectedIndex.push_back(i);
+//									info_printf("Neightbour[%d] x: %d, y: %d\n",i , oldShot.x-1, oldShot.y );
+								}
+								if (available_shots[i].x == oldShot.x+1) {
+									connectedIndex.push_back(i);
+//									info_printf("Neightbour[%d] x: %d, y: %d\n",i , oldShot.x+1, oldShot.y );
+								}
+							}
+							
+							if ( available_shots[i].x == oldShot.x ) 
+							{
+								if (available_shots[i].y == oldShot.y-1) {
+									connectedIndex.push_back(i);
+//									info_printf("Neightbour[%d] x: %d, y: %d\n",i , oldShot.x, oldShot.y-1 );
+								}
+								if (available_shots[i].y == oldShot.y+1){
+									connectedIndex.push_back(i);
+//									info_printf("Neightbour[%d] x: %d, y: %d\n",i , oldShot.x, oldShot.y+1 );
+								}
+							}
+						}
+
+						// If no connectors next look back
+						if ( connectedIndex.size() <= 0 ) {
+//							info_printf("No Neightbour\n" );
+							continue;
+						}
+
+						// Pick an available connector
+						// TODO : remember which way we went
+						int index = 0;
+
+						if ( connectedIndex.size() > 1 ) {
+							index = std::rand() % connectedIndex.size();
+						}
+
+						// move choice near a neightbour to last elemebt
+						index = connectedIndex[index];
+						std::swap( available_shots[index], available_shots[available_shots.size() - 1] );
+
+						shot = available_shots.back();
+//						info_printf("Shoot Neightbour x: %d, y: %d\n" , shot.x, shot.y );
+						break;
+					}
+				}
+
+				// Drop last one , either original or latest swap
+				available_shots.pop_back();
+
+				uint16_t fireColor = SHOT_COLOR;	
+
+				SHIP* hitShip = CheckShipHit(shot.x, shot.y, false);
+
+				if ( hitShip ) {
+					if ( hitShip->isDestroyed() ) {
+						ships_kiiled.push_back( hitShip->duplicate(true) );
+						fireColor = KILL_COLOR;
+					} else {
+						fireColor = HIT_COLOR;
+					}
+				}
+				
+				// Set fired in demo
+				Dot d = Dot(shot.x, shot.y, fireColor);
+				shots_fired.push_back(d);
+
+//				info_printf("Shoot x: %d, y: %d\n" , shot.x, shot.y );			
+		}
+};*/
+
+// Move to own header and class ?
 class BattleShip : public MultiplayerGame
 {
 	public:
@@ -126,6 +287,8 @@ class BattleShip : public MultiplayerGame
 		void set_hosting(bool state) override;
 		void peer_added(const uint8_t *mac_addr) override;
 		void peer_removed(const uint8_t *mac_addr) override;
+		bool control_sleep() override;
+
 		bool onDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len) override;
 		SFX get_game_wave_file(const char *wav_name) override;
 
